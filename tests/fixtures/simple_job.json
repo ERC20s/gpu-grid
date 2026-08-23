@@ -1,0 +1,5 @@
+{
+  "image": "busybox",
+  "cmd": ["echo", "hello world"],
+  "resources": { "gpus": 0, "memory": 128 }
+}
