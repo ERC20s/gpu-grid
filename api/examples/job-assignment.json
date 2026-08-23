@@ -1,0 +1,7 @@
+{
+  "job_id": "job-123",
+  "host_id": "host-1",
+  "image": "ghcr.io/example/gpu-job:latest",
+  "command": ["python", "train.py", "--epochs", "10"],
+  "env": { "EXAMPLE_VAR": "value" }
+}

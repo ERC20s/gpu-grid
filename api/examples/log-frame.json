@@ -1,0 +1,7 @@
+{
+  "job_id": "job-123",
+  "stream": "stdout",
+  "seq": 0,
+  "payload_base64": "SGVsbG8gd29ybGQh",
+  "timestamp": 1620000001
+}

@@ -21,3 +21,5 @@ Assumed host-report schema (used by scheduler matcher tests):
 - timestamp: unix epoch seconds or ms (number)
 
 This schema is an assumption for the minimal scheduler. If the host-agent implemented in the repository differs, the matcher will be adapted in a follow-up change.
+
+Protocol specification (v1): api/protocol.json

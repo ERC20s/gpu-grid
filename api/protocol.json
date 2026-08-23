@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.org/gpu-grid/protocol.json",
+  "title": "gpu-grid protocol v1",
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["version"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["protocol"],
+  "additionalProperties": true,
+  "definitions": {
+    "HostReport": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "model": { "type": "string" },
+        "vram_mb": { "type": "number", "minimum": 0 },
+        "gpu_util_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "free_memory_mb": { "type": "number", "minimum": 0 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "model", "vram_mb", "gpu_util_pct", "free_memory_mb", "timestamp"],
+      "additionalProperties": false
+    },
+    "JobSpec": {
+      "type": "object",
+      "properties": {
+        "job_id": { "type": "string" },
+        "required_min_vram_mb": { "type": "number", "minimum": 0 },
+        "acceptable_gpu_models": { "type": "array", "items": { "type": "string" } },
+        "max_util_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "required_gpus": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["job_id"],
+      "additionalProperties": false
+    },
+    "MatchRequest": {
+      "type": "object",
+      "properties": {
+        "job": { "$ref": "#/definitions/JobSpec" },
+        "hosts": { "type": "array", "items": { "$ref": "#/definitions/HostReport" } }
+      },
+      "required": ["job", "hosts"],
+      "additionalProperties": false
+    },
+    "MatchResponse": {
+      "type": "object",
+      "properties": {
+        "matches": { "type": "array", "items": { "$ref": "#/definitions/HostReport" } }
+      },
+      "required": ["matches"],
+      "additionalProperties": false
+    },
+    "JobAssignment": {
+      "type": "object",
+      "properties": {
+        "job_id": { "type": "string" },
+        "host_id": { "type": "string" },
+        "image": { "type": "string" },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "required": ["job_id", "host_id", "image", "command"],
+      "additionalProperties": false
+    },
+    "JobStatus": {
+      "type": "object",
+      "properties": {
+        "job_id": { "type": "string" },
+        "state": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["job_id", "state", "timestamp"],
+      "additionalProperties": false
+    },
+    "LogFrame": {
+      "type": "object",
+      "properties": {
+        "job_id": { "type": "string" },
+        "stream": { "type": "string", "enum": ["stdout", "stderr"] },
+        "seq": { "type": "integer", "minimum": 0 },
+        "payload_base64": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["job_id", "stream", "seq", "payload_base64", "timestamp"],
+      "additionalProperties": false
+    }
+  }
+}

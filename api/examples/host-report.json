@@ -1,0 +1,8 @@
+{
+  "id": "host-1",
+  "model": "A100",
+  "vram_mb": 40960,
+  "gpu_util_pct": 10,
+  "free_memory_mb": 20000,
+  "timestamp": 1620000000
+}
