@@ -1,0 +1,12 @@
+{
+  "name": "gpu-grid-scheduler",
+  "version": "0.1.0",
+  "description": "Minimal scheduler service for gpu-grid: POST /match",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/matcher.test.js"
+  },
+  "author": "gpu-grid",
+  "license": "MIT"
+}
