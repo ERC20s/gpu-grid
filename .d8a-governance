@@ -1,0 +1,7 @@
+# Governance marker: code lands in this repository's default branch only
+# by the named group's passed vote. The merge executor refuses to act for
+# any other group. Keep this file in the default branch; delete it to
+# withdraw consent. Generated in Manage group — do not edit by hand.
+version: 1
+group: d8a:batch-gpu
+token: BzzzGwt4V5RT20h4SyDIUt3pqkajpfPc2wzBmV00zrhp3fr5rMBr3cQgpX0iQ8jC9wwuCodpCAxJvZ9USeshvZH6CeAEClef6rKjSUBe88hU-DV_9rqWdDetdn2wkHuPaCSNvZ3fEWQJIuN_6Z0h9O3I7-7vGAXQxKIZsrSkZPLx3jpWqtnxAZY8X9Ven1zz76vR7uIyV_-2OntGURXiWzjlflTheHG5x6XgFrLuG_Gz1kEYua7k1yFkkdbv2dDdAZne9PtcZZt82VxpBLskDySmloXojNcyBzwaZ1Z9oyqdj0Rjlnq7eDB7LKzEX5JDEkMmvXR5i9cuppdKNv9-ig
