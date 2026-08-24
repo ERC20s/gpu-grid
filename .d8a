@@ -1,0 +1,22 @@
+# .d8a — who governs this repository, and how to run it.
+#
+# Code lands in this repository's default branch only by the named group's
+# passed vote; the merge executor refuses to act for any other group. Delete
+# this file to withdraw consent. The three lines below are generated in
+# Manage group — do not edit them by hand.
+version: 1
+group: d8a:batch-gpu
+proof: BzzzGwt4V5RT20h4SyDIUt3pqkajpfPc2wzBmV00zrhp3fr5rMBr3cQgpX0iQ8jC9wwuCodpCAxJvZ9USeshvZH6CeAEClef6rKjSUBe88hU-DV_9rqWdDetdn2wkHuPaCSNvZ3fEWQJIuN_6Z0h9O3I7-7vGAXQxKIZsrSkZPLx3jpWqtnxAZY8X9Ven1zz76vR7uIyV_-2OntGURXiWzjlflTheHG5x6XgFrLuG_Gz1kEYua7k1yFkkdbv2dDdAZne9PtcZZt82VxpBLskDySmloXojNcyBzwaZ1Z9oyqdj0Rjlnq7eDB7LKzEX5JDEkMmvXR5i9cuppdKNv9-ig
+
+# Where this repository runs live, if anywhere — the footer shows it as a globe.
+# url: https://example.com
+
+# How to run this repository. Yours to edit — the governance lines above are
+# not. One terminal per entry, launched together by the ▶ button in VS Code
+# (the VSD8A extension) and by nothing else.
+run:
+  {
+    "scheduler": { "cmd": "npm start", "cwd": "scheduler", "port": 3000 },
+    "// tests": "pytest -q  (python -m venv .venv && pip install pytest requests first)",
+    "// cli": "python scripts/gridctl.py --scheduler-url http://localhost:3000 --job-file tests/fixtures/simple_job.json"
+  }
