@@ -20,8 +20,12 @@ function match(job, hosts) {
   const scored = candidates.map(h => {
     const util = typeof h.gpu_util_pct === 'number' ? h.gpu_util_pct : 0;
     const freeMem = typeof h.free_memory_mb === 'number' ? h.free_memory_mb : 0;
-    const ts = typeof h.timestamp === 'number' ? h.timestamp : 0;
-    const score = (100 - util) * 1000 + freeMem + ts / 1000;
+    // Normalize timestamp: hosts may report seconds or milliseconds since epoch.
+    // Heuristic: values greater than 1e11 look like milliseconds (e.g. 1620000000000)
+    // while typical seconds values are ~1e9. If millis, convert to seconds.
+    const tsNum = typeof h.timestamp === 'number' ? h.timestamp : 0;
+    const normalizedTs = tsNum > 1e11 ? Math.floor(tsNum / 1000) : tsNum;
+    const score = (100 - util) * 1000 + freeMem + normalizedTs / 1000;
     return {host: h, score};
   });
 
