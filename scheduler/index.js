@@ -1,4 +1,6 @@
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { match } = require('./lib/matcher');
 
 const PORT = process.env.PORT || 3000;
@@ -39,6 +41,21 @@ const server = http.createServer((req, res) => {
     const hosts = Array.from(hostRegistry.values());
     res.writeHead(200, {'Content-Type': 'application/json'});
     res.end(JSON.stringify({hosts}));
+    return;
+  }
+
+  // Serve a minimal static console: GET / or GET /console
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/console')) {
+    const file = path.join(__dirname, 'static', 'index.html');
+    fs.readFile(file, 'utf8', (err, data) => {
+      if (err) {
+        res.writeHead(500, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({error: 'internal_error'}));
+        return;
+      }
+      res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
+      res.end(data);
+    });
     return;
   }
 
