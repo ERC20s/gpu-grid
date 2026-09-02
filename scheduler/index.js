@@ -83,6 +83,59 @@ function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+// Validate a single host object. Returns null on success, or an error message
+// string suitable for the validationError response.
+function validateHost(host) {
+  if (!host || typeof host !== 'object') return 'expected object';
+
+  // Basic required fields presence
+  const required = ['id', 'model', 'vram_mb', 'timestamp'];
+  for (const k of required) {
+    if (host[k] === undefined) {
+      return `missing ${k}`;
+    }
+  }
+
+  // id: non-empty string, capped length
+  if (typeof host.id !== 'string' || host.id.length === 0) {
+    return 'id must be a non-empty string';
+  }
+  if (host.id.length > 256) {
+    return 'id too long';
+  }
+
+  // model: non-empty string
+  if (typeof host.model !== 'string' || host.model.length === 0) {
+    return 'model must be a non-empty string';
+  }
+
+  // vram_mb: finite non-negative number
+  if (!isFiniteNumber(host.vram_mb) || host.vram_mb < 0) {
+    return 'vram_mb must be a non-negative number';
+  }
+
+  // timestamp: finite number (allow seconds or ms)
+  if (!isFiniteNumber(host.timestamp)) {
+    return 'timestamp must be a number';
+  }
+
+  // optional gpu_util_pct: finite number in [0,100]
+  if (host.gpu_util_pct !== undefined) {
+    if (!isFiniteNumber(host.gpu_util_pct) || host.gpu_util_pct < 0 || host.gpu_util_pct > 100) {
+      return 'gpu_util_pct must be between 0 and 100';
+    }
+  }
+
+  // optional free_memory_mb: finite non-negative number
+  if (host.free_memory_mb !== undefined) {
+    if (!isFiniteNumber(host.free_memory_mb) || host.free_memory_mb < 0) {
+      return 'free_memory_mb must be a non-negative number';
+    }
+  }
+
+  return null;
+}
+
 const server = http.createServer((req, res) => {
   const path = pathOf(req.url || '');
 
@@ -113,53 +166,34 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       if (tooLarge) return;
       try {
-        const host = JSON.parse(body || '{}');
+        const parsed = JSON.parse(body || '{}');
+
+        if (Array.isArray(parsed)) {
+          // Batch path: validate all first, then upsert atomically
+          for (let i = 0; i < parsed.length; i++) {
+            const err = validateHost(parsed[i]);
+            if (err) {
+              return validationError(res, `hosts[${i}]: ${err}`);
+            }
+          }
+          // All valid; upsert all
+          const stored = [];
+          const now = Date.now();
+          for (const h of parsed) {
+            hostRegistry.set(h.id, {host: h, seenAt: now});
+            stored.push(h);
+          }
+          res.writeHead(200, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({hosts: stored}));
+          return;
+        }
+
+        // Single-host path: preserve existing behaviour
+        const host = parsed;
         if (!host || typeof host !== 'object') throw new Error('expected object');
 
-        // Basic required fields presence
-        const required = ['id', 'model', 'vram_mb', 'timestamp'];
-        for (const k of required) {
-          if (host[k] === undefined) {
-            return validationError(res, `missing ${k}`);
-          }
-        }
-
-        // id: non-empty string, capped length
-        if (typeof host.id !== 'string' || host.id.length === 0) {
-          return validationError(res, 'id must be a non-empty string');
-        }
-        if (host.id.length > 256) {
-          return validationError(res, 'id too long');
-        }
-
-        // model: non-empty string
-        if (typeof host.model !== 'string' || host.model.length === 0) {
-          return validationError(res, 'model must be a non-empty string');
-        }
-
-        // vram_mb: finite non-negative number
-        if (!isFiniteNumber(host.vram_mb) || host.vram_mb < 0) {
-          return validationError(res, 'vram_mb must be a non-negative number');
-        }
-
-        // timestamp: finite number (allow seconds or ms)
-        if (!isFiniteNumber(host.timestamp)) {
-          return validationError(res, 'timestamp must be a number');
-        }
-
-        // optional gpu_util_pct: finite number in [0,100]
-        if (host.gpu_util_pct !== undefined) {
-          if (!isFiniteNumber(host.gpu_util_pct) || host.gpu_util_pct < 0 || host.gpu_util_pct > 100) {
-            return validationError(res, 'gpu_util_pct must be between 0 and 100');
-          }
-        }
-
-        // optional free_memory_mb: finite non-negative number
-        if (host.free_memory_mb !== undefined) {
-          if (!isFiniteNumber(host.free_memory_mb) || host.free_memory_mb < 0) {
-            return validationError(res, 'free_memory_mb must be a non-negative number');
-          }
-        }
+        const err = validateHost(host);
+        if (err) return validationError(res, err);
 
         hostRegistry.set(host.id, {host, seenAt: Date.now()});
         res.writeHead(200, {'Content-Type': 'application/json'});
@@ -251,3 +285,4 @@ module.exports = server;
 module.exports.hostRegistry = hostRegistry;
 module.exports.hostTtlMs = hostTtlMs;
 module.exports.freshHosts = freshHosts;
+module.exports.validateHost = validateHost;

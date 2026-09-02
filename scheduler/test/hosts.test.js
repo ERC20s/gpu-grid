@@ -23,6 +23,8 @@ async function runTests() {
   await testGetHosts(port);
   await testMatchUsesRegistry(port);
   await testRejectsInvalidHost(port);
+  await testBulkPostAddsAllHosts(port);
+  await testBulkPostAtomicReject(port);
 
   server.close();
   console.log('Hosts tests passed');
@@ -81,6 +83,41 @@ async function testRejectsInvalidHost(port) {
   const payload = JSON.parse(list.body);
   const ids = payload.hosts.map(h => h.id);
   assert(!ids.includes('bad-1') && !ids.includes('bad-2') && !ids.includes(longId), 'bad hosts not present');
+}
+
+async function testBulkPostAddsAllHosts(port) {
+  const hosts = [
+    {id: 'bulk-1', model: 'A100', vram_mb: 40960, timestamp: 1620000000},
+    {id: 'bulk-2', model: 'A100', vram_mb: 81920, timestamp: 1620000000}
+  ];
+  const res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(hosts));
+  assert(res.statusCode === 200, 'bulk POST should return 200');
+  const payload = JSON.parse(res.body);
+  assert(Array.isArray(payload.hosts), 'response contains hosts array');
+  assert(payload.hosts.length === 2, 'two hosts returned');
+
+  // ensure they appear in GET /hosts
+  const list = await request({method: 'GET', port, path: '/hosts'});
+  const lpayload = JSON.parse(list.body);
+  const ids = lpayload.hosts.map(h => h.id);
+  assert(ids.includes('bulk-1') && ids.includes('bulk-2'), 'bulk hosts present in registry');
+}
+
+async function testBulkPostAtomicReject(port) {
+  const hosts = [
+    {id: 'bulk-3', model: 'A100', vram_mb: 40960, timestamp: 1620000000},
+    {id: 'bulk-bad', model: 'A100', vram_mb: 81920, timestamp: 'not-a-number'}
+  ];
+  const res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(hosts));
+  assert(res.statusCode === 400, 'bulk POST with an invalid host should return 400');
+  const payload = JSON.parse(res.body);
+  assert(payload.error === 'invalid_host', 'error code for invalid batch');
+
+  // ensure none of the batch were added
+  const list = await request({method: 'GET', port, path: '/hosts'});
+  const lpayload = JSON.parse(list.body);
+  const ids = lpayload.hosts.map(h => h.id);
+  assert(!ids.includes('bulk-3') && !ids.includes('bulk-bad'), 'no hosts from invalid batch present');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
