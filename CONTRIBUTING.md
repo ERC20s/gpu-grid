@@ -14,9 +14,13 @@ Run the unit tests
 
 Run the CLI against a local scheduler
 
-- The scripts/gridctl.py provides a minimal CLI. For example, with a local test server listening on port 8000:
+- The scripts/gridctl.py provides a minimal CLI. The scheduler in this repository listens on
+  port 3000 (cd scheduler && npm start), so:
 
-  python scripts/gridctl.py --scheduler-url http://localhost:8000 --job-file tests/fixtures/simple_job.json
+  python scripts/gridctl.py --scheduler-url http://localhost:3000 --job-file tests/fixtures/simple_job.json
+
+  The CLI wraps the job file as {"job": ...} for POST /match and prints the ranked hosts from
+  the {"matches": [...]} response. See the gridctl section of README.md for exit codes.
 
 Notes
 
