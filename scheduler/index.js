@@ -18,6 +18,17 @@ function hostTtlMs() {
   return Math.floor(parsed * 1000);
 }
 
+// Maximum accepted request body size for POST endpoints. Defaults to 256KB.
+const DEFAULT_MAX_REQUEST_SIZE_BYTES = 262144;
+function maxRequestSizeBytes() {
+  const raw = process.env.MAX_REQUEST_SIZE_BYTES;
+  const parsed = Number(raw);
+  if (raw === undefined || raw === '' || !Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_MAX_REQUEST_SIZE_BYTES;
+  }
+  return Math.floor(parsed);
+}
+
 // In-memory host registry: Map<id, {host, seenAt}>
 // seenAt is a SERVER-side stamp (Date.now()), deliberately kept outside the
 // host object so a host cannot claim to be alive with a forged timestamp and
@@ -78,8 +89,29 @@ const server = http.createServer((req, res) => {
   // POST /hosts -> accept single host JSON, validate and upsert
   if (req.method === 'POST' && path === '/hosts') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let received = 0;
+    const limit = maxRequestSizeBytes();
+    let tooLarge = false;
+
+    req.on('data', chunk => {
+      if (tooLarge) return;
+      const chunkLen = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+      received += chunkLen;
+      if (received > limit) {
+        tooLarge = true;
+        if (!res.headersSent) {
+          res.writeHead(413, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
+        }
+        // Close the connection and stop processing further data.
+        try { req.destroy(); } catch (e) {}
+        return;
+      }
+      body += chunk;
+    });
+
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         const host = JSON.parse(body || '{}');
         if (!host || typeof host !== 'object') throw new Error('expected object');
@@ -152,8 +184,28 @@ const server = http.createServer((req, res) => {
   // POST /match -> use payload.hosts if provided, otherwise use LIVE registry
   if (req.method === 'POST' && path === '/match') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let received = 0;
+    const limit = maxRequestSizeBytes();
+    let tooLarge = false;
+
+    req.on('data', chunk => {
+      if (tooLarge) return;
+      const chunkLen = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+      received += chunkLen;
+      if (received > limit) {
+        tooLarge = true;
+        if (!res.headersSent) {
+          res.writeHead(413, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
+        }
+        try { req.destroy(); } catch (e) {}
+        return;
+      }
+      body += chunk;
+    });
+
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         const payload = JSON.parse(body || '{}');
         const job = payload.job || {};
