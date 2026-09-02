@@ -12,6 +12,22 @@ The scheduler provides a minimal HTTP endpoint POST /match which accepts a JSON 
 
 Response is JSON: {"matches": [ <host objects in ranked order> ] }
 
+Ranking rule:
+
+Hosts that pass the filters (vram_mb, acceptable_gpu_models, max_util_pct) are ranked by a
+strict ordered comparison - each key is only looked at when the one before it ties:
+
+1. gpu_util_pct ascending - the idlest host first (a missing value counts as 0).
+2. free_memory_mb descending - more headroom first (a missing value counts as 0).
+3. timestamp descending - the fresher report first (a missing value counts as 0).
+4. id ascending - so a complete tie always comes back in the same order.
+
+There is no combined score. A large free_memory_mb can never outrank lower utilisation, and
+timestamp only ever breaks a tie, so a host reporting epoch milliseconds where another
+reports seconds cannot win a match on that alone. Timestamp units are deliberately not
+normalised. Liveness is judged by the scheduler's own clock (see Host liveness), not by
+this field.
+
 Assumed host-report schema (used by scheduler matcher tests):
 - id: string
 - model: string (GPU model name)
