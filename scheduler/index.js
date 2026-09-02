@@ -173,6 +173,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /health -> readonly operational health for load balancers and probes
+  if (req.method === 'GET' && path === '/health') {
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({
+      status: 'ok',
+      now: Date.now(),
+      uptime_ms: Math.floor(process.uptime() * 1000),
+      host_count: hostRegistry.size,
+      host_ttl_seconds: Math.floor(hostTtlMs() / 1000)
+    }));
+    return;
+  }
+
   // GET /hosts -> list live hosts (add ?include_stale=1 for the full registry)
   if (req.method === 'GET' && path === '/hosts') {
     const hosts = wantsStale(req.url || '') ? allHostsAnnotated() : freshHosts();
