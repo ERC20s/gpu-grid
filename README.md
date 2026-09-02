@@ -21,3 +21,21 @@ Assumed host-report schema (used by scheduler matcher tests):
 - timestamp: unix epoch seconds or ms (number)
 
 This schema is an assumption for the minimal scheduler. If the host-agent implemented in the repository differs, the matcher will be adapted in a follow-up change.
+
+Host liveness:
+
+The scheduler keeps an in-memory registry of the hosts that POST /hosts. A host stays
+matchable only while it keeps reporting: an entry whose last report is older than
+HOST_TTL_SECONDS (default 120) is treated as dead, evicted from the registry as it is
+read, and never returned by POST /match when the payload carries no explicit hosts array.
+
+- Host agents must re-report inside HOST_TTL_SECONDS or they drop out of matching.
+- Liveness is measured with the scheduler's own clock at the moment a report arrives,
+  not with the host-supplied timestamp field, so host clock skew cannot hide a dead machine.
+- GET /hosts lists live hosts only, plus host_ttl_seconds (the TTL in force).
+- GET /hosts?include_stale=1 lists every registry entry, each with stale (boolean) and
+  last_seen_ms_ago (number), for the web console.
+- A POST /match payload that supplies its own hosts array is unaffected by the TTL.
+
+Set HOST_TTL_SECONDS shorter than the reporting interval and the grid will look empty;
+keep it comfortably above the agent's report period. See .env.example.
