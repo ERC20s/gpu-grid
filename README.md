@@ -55,3 +55,22 @@ read, and never returned by POST /match when the payload carries no explicit hos
 
 Set HOST_TTL_SECONDS shorter than the reporting interval and the grid will look empty;
 keep it comfortably above the agent's report period. See .env.example.
+
+Agent
+
+This repository now includes a minimal host agent that samples local GPUs via nvidia-smi
+and posts one host report per GPU to the scheduler's POST /hosts endpoint. The agent lives
+in the agent/ folder and is deliberately switched off in .d8a run: by default; operators
+enable it on a machine with GPUs by deleting the "// " prefix in the run entry.
+
+- agent/index.js: the long-running loop that samples GPUs and posts reports.
+- agent/lib/nvidia.js: runs nvidia-smi and parses its CSV output into the report schema.
+- agent/test/agent.test.js: unit tests that run without a GPU by feeding a fixture CSV.
+
+Environment variables used by the agent (declare values on the Admin tab or in .env):
+- SCHEDULER_URL (required) - e.g. http://localhost:3000
+- AGENT_REPORT_SECONDS (optional) - report interval in seconds, default 30
+- HOST_ID (optional) - base host id; reports are posted as HOST_ID-gpu<#>
+
+If you run the agent locally for tests, set SCHEDULER_URL to a local scheduler and run
+"cd agent && npm test".

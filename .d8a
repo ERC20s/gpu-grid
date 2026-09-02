@@ -125,6 +125,9 @@ payments:
 # on the Admin tab and live on the box, never here.
 keys:
   HOST_TTL_SECONDS
+  SCHEDULER_URL
+  AGENT_REPORT_SECONDS
+  HOST_ID
 
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
@@ -135,6 +138,7 @@ keys:
 run:
   {
     "scheduler": { "cmd": "npm start", "cwd": "scheduler", "port": 3000 },
+    "// agent": { "cmd": "npm start", "cwd": "agent" },
     "// tests": "pytest -q  (python -m venv .venv && pip install pytest requests first)",
     "// cli": "python scripts/gridctl.py --scheduler-url http://localhost:3000 --job-file tests/fixtures/simple_job.json"
   }

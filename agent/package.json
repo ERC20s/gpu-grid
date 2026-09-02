@@ -1,0 +1,12 @@
+{
+  "name": "gpu-grid-agent",
+  "version": "0.1.0",
+  "description": "Host agent that reports GPU utilisation to the scheduler",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/agent.test.js"
+  },
+  "author": "gpu-grid",
+  "license": "MIT"
+}
