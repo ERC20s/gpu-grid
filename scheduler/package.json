@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node test/matcher.test.js"
+    "test": "node test/matcher.test.js && node test/hosts.test.js",
+    "test:matcher": "node test/matcher.test.js",
+    "test:hosts": "node test/hosts.test.js"
   },
   "author": "gpu-grid",
   "license": "MIT"
