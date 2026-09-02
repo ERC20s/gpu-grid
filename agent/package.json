@@ -1,0 +1,12 @@
+{
+  "name": "gpu-grid-agent",
+  "version": "0.1.0",
+  "description": "Opt-in host agent that reports aggregated GPU metrics to the scheduler",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/agent.test.js"
+  },
+  "author": "gpu-grid",
+  "license": "MIT"
+}

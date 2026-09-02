@@ -55,3 +55,5 @@ read, and never returned by POST /match when the payload carries no explicit hos
 
 Set HOST_TTL_SECONDS shorter than the reporting interval and the grid will look empty;
 keep it comfortably above the agent's report period. See .env.example.
+
+Agent: an opt-in host agent has been added under ./agent. It aggregates per-GPU metrics into a single host object and POSTs to the scheduler at SCHEDULER_URL/hosts. The agent is disabled by default in the .d8a run: block; operators enable it by setting SCHEDULER_URL and AGENT_REPORT_SECONDS on the server and removing the leading "// " from the agent run entry.
