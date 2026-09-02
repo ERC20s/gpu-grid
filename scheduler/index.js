@@ -181,6 +181,21 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /health -> simple health and readiness check. Returns a small JSON with
+  // deterministic fields that do not expose internal registry metrics.
+  if (req.method === 'GET' && path === '/health') {
+    const now = Date.now();
+    const uptimeMs = Math.floor(process.uptime() * 1000);
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({
+      status: 'ok',
+      now,
+      uptime_ms: uptimeMs,
+      host_ttl_seconds: Math.floor(hostTtlMs() / 1000)
+    }));
+    return;
+  }
+
   // POST /match -> use payload.hosts if provided, otherwise use LIVE registry
   if (req.method === 'POST' && path === '/match') {
     let body = '';
