@@ -22,6 +22,7 @@ async function runTests() {
   await testPostHost(port);
   await testGetHosts(port);
   await testMatchUsesRegistry(port);
+  await testRejectsInvalidHost(port);
 
   server.close();
   console.log('Hosts tests passed');
@@ -50,6 +51,36 @@ async function testMatchUsesRegistry(port) {
   const payload = JSON.parse(res.body);
   assert(Array.isArray(payload.matches), 'matches array');
   assert(payload.matches.length >= 1, 'registry host matched');
+}
+
+async function testRejectsInvalidHost(port) {
+  // non-numeric timestamp
+  const bad1 = {id: 'bad-1', model: 'A100', vram_mb: 40960, timestamp: 'not-a-number'};
+  let res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(bad1));
+  assert(res.statusCode === 400, 'non-numeric timestamp should be rejected');
+  const p1 = JSON.parse(res.body);
+  assert(p1.error === 'invalid_host', 'error code for invalid host');
+
+  // gpu_util_pct out of range
+  const bad2 = {id: 'bad-2', model: 'A100', vram_mb: 40960, timestamp: 1620000000, gpu_util_pct: 150};
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(bad2));
+  assert(res.statusCode === 400, 'gpu_util_pct out of range should be rejected');
+  const p2 = JSON.parse(res.body);
+  assert(p2.error === 'invalid_host', 'error code for invalid host');
+
+  // id too long
+  const longId = 'x'.repeat(300);
+  const bad3 = {id: longId, model: 'A100', vram_mb: 40960, timestamp: 1620000000};
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(bad3));
+  assert(res.statusCode === 400, 'too long id should be rejected');
+  const p3 = JSON.parse(res.body);
+  assert(p3.error === 'invalid_host', 'error code for invalid host');
+
+  // ensure none of the bad hosts were added
+  const list = await request({method: 'GET', port, path: '/hosts'});
+  const payload = JSON.parse(list.body);
+  const ids = payload.hosts.map(h => h.id);
+  assert(!ids.includes('bad-1') && !ids.includes('bad-2') && !ids.includes(longId), 'bad hosts not present');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
