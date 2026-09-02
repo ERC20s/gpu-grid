@@ -66,7 +66,7 @@ payments:
       if (retry) retry.addEventListener("click", function () { load(); });
     };
     var load = function () {
-      el.innerHTML = '<p role="status" style="font:13px system-ui,sans-serif;color:#9ca3af">Loading what&#39;s on sale\u2026</p>';
+      el.innerHTML = '<p role="status" style="font:13px system-ui,sans-serif;color:#9ca3af">Loading what\'s on sale\u2026</p>';
       // A request that never answers (captive wifi, a stalled proxy) never
       // rejects, so without this the box would sit on the loading line for ever.
       var done = false, timedOut = false;
@@ -125,6 +125,7 @@ payments:
 # on the Admin tab and live on the box, never here.
 keys:
   HOST_TTL_SECONDS
+  MAX_REQUEST_SIZE_BYTES
 
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
