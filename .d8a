@@ -121,6 +121,11 @@ payments:
   })();
   </script>
 
+# keys: — setting NAMES this project reads from the environment. Values are set
+# on the Admin tab and live on the box, never here.
+keys:
+  HOST_TTL_SECONDS
+
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
 
