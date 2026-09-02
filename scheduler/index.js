@@ -170,13 +170,20 @@ const server = http.createServer((req, res) => {
 
         if (Array.isArray(parsed)) {
           // Batch path: validate all first, then upsert atomically
+          const seen = new Set();
           for (let i = 0; i < parsed.length; i++) {
             const err = validateHost(parsed[i]);
             if (err) {
               return validationError(res, `hosts[${i}]: ${err}`);
             }
+            // Duplicate id check: reject the whole batch if any id repeats
+            const id = parsed[i].id;
+            if (seen.has(id)) {
+              return validationError(res, `hosts[${i}]: duplicate id "${id}"`);
+            }
+            seen.add(id);
           }
-          // All valid; upsert all
+          // All valid and unique; upsert all
           const stored = [];
           const now = Date.now();
           for (const h of parsed) {

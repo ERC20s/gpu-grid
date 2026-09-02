@@ -25,6 +25,7 @@ async function runTests() {
   await testRejectsInvalidHost(port);
   await testBulkPostAddsAllHosts(port);
   await testBulkPostAtomicReject(port);
+  await testBulkPostRejectsDuplicateIds(port);
 
   server.close();
   console.log('Hosts tests passed');
@@ -118,6 +119,23 @@ async function testBulkPostAtomicReject(port) {
   const lpayload = JSON.parse(list.body);
   const ids = lpayload.hosts.map(h => h.id);
   assert(!ids.includes('bulk-3') && !ids.includes('bulk-bad'), 'no hosts from invalid batch present');
+}
+
+async function testBulkPostRejectsDuplicateIds(port) {
+  const hosts = [
+    {id: 'dup-1', model: 'A100', vram_mb: 40960, timestamp: 1620000000},
+    {id: 'dup-1', model: 'A100', vram_mb: 40960, timestamp: 1620000000}
+  ];
+  const res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(hosts));
+  assert(res.statusCode === 400, 'bulk POST with duplicate ids should return 400');
+  const payload = JSON.parse(res.body);
+  assert(payload.error === 'invalid_host', 'error code for duplicate ids');
+
+  // ensure none of the batch were added
+  const list = await request({method: 'GET', port, path: '/hosts'});
+  const lpayload = JSON.parse(list.body);
+  const ids = lpayload.hosts.map(h => h.id);
+  assert(!ids.includes('dup-1'), 'duplicate hosts not present');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
