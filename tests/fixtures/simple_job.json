@@ -1,5 +1,8 @@
 {
   "image": "busybox",
   "cmd": ["echo", "hello world"],
-  "resources": { "gpus": 0, "memory": 128 }
+  "required_min_vram_mb": 8192,
+  "acceptable_gpu_models": ["A100", "A10G"],
+  "max_util_pct": 80,
+  "resources": { "gpus": 1, "memory": 128 }
 }
