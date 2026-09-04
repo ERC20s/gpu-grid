@@ -55,3 +55,32 @@ read, and never returned by POST /match when the payload carries no explicit hos
 
 Set HOST_TTL_SECONDS shorter than the reporting interval and the grid will look empty;
 keep it comfortably above the agent's report period. See .env.example.
+
+gridctl (the CLI):
+
+scripts/gridctl.py asks the scheduler which hosts match a job.
+
+    python scripts/gridctl.py --scheduler-url http://localhost:3000 \
+        --job-file tests/fixtures/match_job.json
+
+The job file holds the matcher-shaped job spec itself:
+
+{ "required_min_vram_mb": 8192, "acceptable_gpu_models": ["A100", "RTX4090"], "max_util_pct": 60 }
+
+gridctl wraps it for the endpoint and posts {"job": { ... }} to POST /match, so the
+scheduler's payload.job is the spec you wrote. Without that wrapper payload.job is
+undefined, the filter is empty and every live host "matches" - that was the old bug.
+A job file that already has a top-level "job" key is posted as it stands, and its
+optional "hosts" array is passed through (POST /match then matches that list instead
+of the live registry).
+
+The reply {"matches": [...]} is printed best host first and the CLI exits 0:
+
+    2 host(s) matched, best first:
+      1. host-a  model=A100  gpu_util_pct=5  free_memory_mb=30000
+      2. host-b  model=A100  gpu_util_pct=40  free_memory_mb=12000
+
+An empty matches array prints "No hosts matched." and still exits 0. If a future
+job-execution API answers with a job id instead ({"id": ...}), gridctl keeps its old
+behaviour: it prints "Job submitted: <id>" and polls GET /jobs/<id>/logs. Run the CLI
+tests with pytest -q.
