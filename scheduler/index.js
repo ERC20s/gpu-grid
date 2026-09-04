@@ -79,6 +79,11 @@ function validationError(res, message) {
   res.end(JSON.stringify({error: 'invalid_host', message}));
 }
 
+function jobValidationError(res, message) {
+  res.writeHead(400, {'Content-Type': 'application/json'});
+  res.end(JSON.stringify({error: 'invalid_job', message}));
+}
+
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
@@ -130,6 +135,76 @@ function validateHost(host) {
   if (host.free_memory_mb !== undefined) {
     if (!isFiniteNumber(host.free_memory_mb) || host.free_memory_mb < 0) {
       return 'free_memory_mb must be a non-negative number';
+    }
+  }
+
+  return null;
+}
+
+// Validate a job spec exactly as lib/matcher.js reads it. The matcher silently
+// downgrades anything it does not recognise (a string "10" for max_util_pct
+// becomes "no utilisation limit", a bare "A100" for acceptable_gpu_models
+// becomes "any model"), so a filter that is the wrong SHAPE quietly turns into
+// "anything" and the job lands on the wrong card. Reject it up front instead.
+// Unknown fields (image, cmd, resources, ...) stay ignored on purpose - they
+// belong to the job-execution side, not to matching.
+// Returns null on success or an error message string.
+function validateJob(job) {
+  if (!job || typeof job !== 'object' || Array.isArray(job)) {
+    return 'job must be an object';
+  }
+
+  if (job.required_min_vram_mb !== undefined) {
+    if (!isFiniteNumber(job.required_min_vram_mb) || job.required_min_vram_mb < 0) {
+      return 'job.required_min_vram_mb must be a non-negative number';
+    }
+  }
+
+  if (job.max_util_pct !== undefined) {
+    if (!isFiniteNumber(job.max_util_pct) || job.max_util_pct < 0 || job.max_util_pct > 100) {
+      return 'job.max_util_pct must be a number between 0 and 100';
+    }
+  }
+
+  if (job.acceptable_gpu_models !== undefined) {
+    if (!Array.isArray(job.acceptable_gpu_models)) {
+      return 'job.acceptable_gpu_models must be an array of strings';
+    }
+    for (let i = 0; i < job.acceptable_gpu_models.length; i++) {
+      const model = job.acceptable_gpu_models[i];
+      if (typeof model !== 'string' || model.length === 0) {
+        return `job.acceptable_gpu_models[${i}] must be a non-empty string`;
+      }
+    }
+  }
+
+  return null;
+}
+
+// Validate a whole POST /match payload: {"job": {...}, "hosts": [...]}. The
+// hosts array (when supplied) is checked with the same validateHost the
+// POST /hosts path uses, so a null or half-built entry cannot reach the matcher
+// and come back as an invalid_json error with a raw JS message.
+// Returns null on success or an error message string.
+function validateMatchPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return 'payload must be a JSON object';
+  }
+
+  if (payload.job === undefined) {
+    return 'missing job - post {"job": { ... }}';
+  }
+
+  const jobErr = validateJob(payload.job);
+  if (jobErr) return jobErr;
+
+  if (payload.hosts !== undefined) {
+    if (!Array.isArray(payload.hosts)) {
+      return 'hosts must be an array';
+    }
+    for (let i = 0; i < payload.hosts.length; i++) {
+      const err = validateHost(payload.hosts[i]);
+      if (err) return `hosts[${i}]: ${err}`;
     }
   }
 
@@ -264,8 +339,12 @@ const server = http.createServer((req, res) => {
       if (tooLarge) return;
       try {
         const payload = JSON.parse(body || '{}');
-        const job = payload.job || {};
-        const hosts = Array.isArray(payload.hosts) ? payload.hosts : freshHosts();
+
+        const err = validateMatchPayload(payload);
+        if (err) return jobValidationError(res, err);
+
+        const job = payload.job;
+        const hosts = payload.hosts !== undefined ? payload.hosts : freshHosts();
         const matches = match(job, hosts);
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify({matches}));
@@ -293,3 +372,5 @@ module.exports.hostRegistry = hostRegistry;
 module.exports.hostTtlMs = hostTtlMs;
 module.exports.freshHosts = freshHosts;
 module.exports.validateHost = validateHost;
+module.exports.validateJob = validateJob;
+module.exports.validateMatchPayload = validateMatchPayload;
