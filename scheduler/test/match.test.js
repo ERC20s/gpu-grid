@@ -45,6 +45,8 @@ async function runTests() {
   await testRejectsBadFilterTypes(port);
   await testRejectsBadHostsArray(port);
   await testUnknownJobFieldsIgnored(port);
+  await testUnreportedUtilRanksLastOverHttp(port);
+  await testMaxUtilPctDropsUnreportedHostOverHttp(port);
 
   server.close();
   console.log('Match validation tests passed');
@@ -133,6 +135,29 @@ async function testUnknownJobFieldsIgnored(port) {
   assert(res.statusCode === 200, 'unknown job fields should be ignored, not rejected');
   const payload = JSON.parse(res.body);
   assert(Array.isArray(payload.matches) && payload.matches.length === 3, 'all seeded hosts clear a 1000MB floor');
+}
+
+// gpu_util_pct is optional at POST /hosts, so a host agent can report without
+// it. End to end, such a host must not come back first, and must not clear a
+// utilisation cap it never proved it meets.
+const SILENT_MIX = [
+  {id: 'u-silent', model: 'A100', vram_mb: 40960, free_memory_mb: 40000, timestamp: 1620000000},
+  {id: 'u-busy', model: 'A100', vram_mb: 40960, gpu_util_pct: 92, free_memory_mb: 1000, timestamp: 1620000000},
+  {id: 'u-idle', model: 'A100', vram_mb: 40960, gpu_util_pct: 7, free_memory_mb: 20000, timestamp: 1620000000}
+];
+
+async function testUnreportedUtilRanksLastOverHttp(port) {
+  const res = await postMatch(port, JSON.stringify({job: {required_min_vram_mb: 1000}, hosts: SILENT_MIX}));
+  assert(res.statusCode === 200, 'a host without gpu_util_pct is still a valid host report');
+  const ids = JSON.parse(res.body).matches.map(h => h.id);
+  assert.deepStrictEqual(ids, ['u-idle', 'u-busy', 'u-silent'], 'not reporting utilisation cannot buy the top slot');
+}
+
+async function testMaxUtilPctDropsUnreportedHostOverHttp(port) {
+  const res = await postMatch(port, JSON.stringify({job: {required_min_vram_mb: 1000, max_util_pct: 10}, hosts: SILENT_MIX}));
+  assert(res.statusCode === 200, 'a capped job is still a valid job');
+  const ids = JSON.parse(res.body).matches.map(h => h.id);
+  assert.deepStrictEqual(ids, ['u-idle'], 'max_util_pct: 10 returns only hosts that actually reported low load');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });

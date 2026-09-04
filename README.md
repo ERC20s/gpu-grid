@@ -40,10 +40,19 @@ Ranking rule:
 Hosts that pass the filters (vram_mb, acceptable_gpu_models, max_util_pct) are ranked by a
 strict ordered comparison - each key is only looked at when the one before it ties:
 
-1. gpu_util_pct ascending - the idlest host first (a missing value counts as 0).
-2. free_memory_mb descending - more headroom first (a missing value counts as 0).
+1. gpu_util_pct ascending - the idlest host first. An UNREPORTED value is not 0: a host that
+   omits gpu_util_pct ranks behind every host that reported one, however busy that host is.
+2. free_memory_mb descending - more headroom first. Unreported likewise ranks behind any
+   reported value, inside a utilisation tie.
 3. timestamp descending - the fresher report first (a missing value counts as 0).
 4. id ascending - so a complete tie always comes back in the same order.
+
+Unknown is not idle. gpu_util_pct is optional at POST /hosts, so a host can report without it -
+but on a marketplace that sells idle GPU time, scoring silence as 0% utilised made "stop
+reporting" the cheapest way to win every match and be paid for a saturated card. A host that
+does not report cannot prove it is idle, so it sorts last. The filter follows the same rule:
+when a job carries max_util_pct, a host with no reported gpu_util_pct is excluded from the
+matches. Without max_util_pct such a host is still matchable, just ranked last.
 
 There is no combined score. A large free_memory_mb can never outrank lower utilisation, and
 timestamp only ever breaks a tie, so a host reporting epoch milliseconds where another

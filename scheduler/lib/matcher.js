@@ -8,10 +8,17 @@
 // term - so a host could climb the ranking just by reporting a bigger number.
 //
 // Order of preference, each key decided before the next is looked at:
-//   1. gpu_util_pct  ascending  (idler host first; missing = 0)
-//   2. free_memory_mb descending (more headroom first; missing = 0)
+//   1. gpu_util_pct  ascending  (idler host first; UNREPORTED ranks after every
+//      host that did report, however busy that host is)
+//   2. free_memory_mb descending (more headroom first; unreported ranks after
+//      every host that did report)
 //   3. timestamp     descending (fresher report first; missing = 0)
 //   4. id            ascending  (deterministic order on a full tie)
+//
+// Unknown is NOT zero. A missing gpu_util_pct used to score as 0% utilised, so
+// the cheapest way for a host to win every match on a marketplace that sells
+// idle GPU time was to stop reporting utilisation altogether. A host that does
+// not report cannot prove it is idle, so it sorts behind the ones that do.
 //
 // timestamp is only ever a tie-breaker, so mixed second/millisecond units can
 // no longer decide a match on their own. Deliberately no unit normalisation
@@ -20,11 +27,27 @@ function num(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+// A value only counts when it was actually reported as a finite number.
+function isReported(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+// Compare one reported-or-not key. Returns a number when the key decides the
+// order (including "reported beats unreported"), or 0 when it ties.
+function compareReported(aValue, bValue, direction) {
+  const aOk = isReported(aValue);
+  const bOk = isReported(bValue);
+  if (aOk && bOk) return direction === 'asc' ? aValue - bValue : bValue - aValue;
+  if (aOk) return -1;   // a reported, b did not: a first
+  if (bOk) return 1;    // b reported, a did not: b first
+  return 0;             // neither reported: undecided, fall through
+}
+
 function compareHosts(a, b) {
-  const utilDiff = num(a.gpu_util_pct) - num(b.gpu_util_pct);
+  const utilDiff = compareReported(a.gpu_util_pct, b.gpu_util_pct, 'asc');
   if (utilDiff !== 0) return utilDiff;
 
-  const memDiff = num(b.free_memory_mb) - num(a.free_memory_mb);
+  const memDiff = compareReported(a.free_memory_mb, b.free_memory_mb, 'desc');
   if (memDiff !== 0) return memDiff;
 
   const tsDiff = num(b.timestamp) - num(a.timestamp);
@@ -42,13 +65,20 @@ function match(job, hosts) {
 
   const requiredVram = job.required_min_vram_mb || 0;
   const acceptableModels = Array.isArray(job.acceptable_gpu_models) ? job.acceptable_gpu_models : null;
-  const maxUtilPct = typeof job.max_util_pct === 'number' ? job.max_util_pct : 100;
+  // A utilisation cap is only applied when the job actually carries one. When
+  // it does, a host with no reported gpu_util_pct is EXCLUDED: it cannot prove
+  // it is under the cap, and the old test (`typeof === 'number' && ...`) simply
+  // never looked at it, so a silent host passed max_util_pct: 0.
+  const hasMaxUtil = isReported(job.max_util_pct);
 
   const candidates = hosts.filter(h => {
     if (typeof h.vram_mb !== 'number') return false;
     if (h.vram_mb < requiredVram) return false;
     if (acceptableModels && acceptableModels.length > 0 && !acceptableModels.includes(h.model)) return false;
-    if (typeof h.gpu_util_pct === 'number' && h.gpu_util_pct > maxUtilPct) return false;
+    if (hasMaxUtil) {
+      if (!isReported(h.gpu_util_pct)) return false;
+      if (h.gpu_util_pct > job.max_util_pct) return false;
+    }
     return true;
   });
 
