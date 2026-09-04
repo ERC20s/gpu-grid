@@ -12,6 +12,29 @@ The scheduler provides a minimal HTTP endpoint POST /match which accepts a JSON 
 
 Response is JSON: {"matches": [ <host objects in ranked order> ] }
 
+POST /match payload rules:
+
+The payload is validated before anything is matched, because the matcher treats a value it
+does not recognise as "no filter at all" - a wrongly shaped job used to match every host
+instead of failing. A payload that breaks a rule below gets 400
+{"error": "invalid_job", "message": "<what was wrong>"} and nothing is matched:
+
+- the body must be a JSON object (not an array, string, number or null) and must carry "job".
+  A bare job spec posted without the {"job": ...} wrapper is now an error, not a full-registry
+  match. An empty body is the same error.
+- "job" must be an object. Unknown fields inside it (image, cmd, resources, ...) are ignored,
+  not rejected - only the matching fields below are checked.
+- required_min_vram_mb, when present, must be a finite number >= 0.
+- max_util_pct, when present, must be a finite number between 0 and 100. The string "10" is
+  rejected; it used to mean "no utilisation limit" and returned busy hosts.
+- acceptable_gpu_models, when present, must be an array of non-empty strings. The bare string
+  "A100" is rejected; it used to mean "any model".
+- "hosts", when present, must be an array and every entry must satisfy the same host schema
+  POST /hosts enforces. A bad entry is reported as hosts[<i>]: <reason>.
+
+A body larger than MAX_REQUEST_SIZE_BYTES still gets 413 request_too_large, and a body that is
+not JSON at all still gets 400 invalid_json.
+
 Ranking rule:
 
 Hosts that pass the filters (vram_mb, acceptable_gpu_models, max_util_pct) are ranked by a
