@@ -1,0 +1,5 @@
+{
+  "required_min_vram_mb": 8192,
+  "acceptable_gpu_models": ["A100", "RTX4090"],
+  "max_util_pct": 60
+}

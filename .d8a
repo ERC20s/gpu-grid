@@ -137,5 +137,5 @@ run:
   {
     "scheduler": { "cmd": "npm start", "cwd": "scheduler", "port": 3000 },
     "// tests": "pytest -q  (python -m venv .venv && pip install pytest requests first)",
-    "// cli": "python scripts/gridctl.py --scheduler-url http://localhost:3000 --job-file tests/fixtures/simple_job.json"
+    "// cli": "python scripts/gridctl.py --scheduler-url http://localhost:3000 --job-file tests/fixtures/match_job.json"
   }
