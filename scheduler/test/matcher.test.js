@@ -11,7 +11,11 @@ function runTests() {
   testEqualUtilAndMemoryRanksByTimestamp();
   testFullTieOrdersById();
   testMillisecondTimestampDoesNotOutrankLowerUtil();
-  testMissingFieldsTreatedAsZero();
+  testUnreportedUtilRanksLast();
+  testUnreportedFreeMemoryRanksLastWithinUtilTie();
+  testUnreportedHostsStillOrderedAmongThemselves();
+  testMaxUtilPctDropsUnreportedHost();
+  testNoMaxUtilPctStillKeepsUnreportedHost();
   testInputArrayNotMutated();
   testCompareHostsExported();
   console.log('All tests passed');
@@ -113,15 +117,76 @@ function testMillisecondTimestampDoesNotOutrankLowerUtil() {
   assert(result[1].id === 'ms', 'the busy host reporting a huge timestamp ranks last');
 }
 
-function testMissingFieldsTreatedAsZero() {
+// --- unknown utilisation is not zero -----------------------------------------
+
+// A host that simply omits gpu_util_pct used to be scored as 0% utilised and
+// won every ranking - the cheapest exploit on a marketplace that sells idle
+// GPU time. An unreported value now sorts behind every host that did report,
+// however busy that host is.
+function testUnreportedUtilRanksLast() {
   const job = { required_min_vram_mb: 4000 };
   const hosts = [
-    {id: 'reported', model: 'A100', vram_mb: 40960, gpu_util_pct: 20, free_memory_mb: 30000, timestamp: 2000},
-    {id: 'silent', model: 'A100', vram_mb: 40960}
+    {id: 'silent', model: 'A100', vram_mb: 40960},
+    {id: 'busy', model: 'A100', vram_mb: 40960, gpu_util_pct: 95, free_memory_mb: 1000, timestamp: 2000},
+    {id: 'idle', model: 'A100', vram_mb: 40960, gpu_util_pct: 5, free_memory_mb: 30000, timestamp: 2000}
   ];
-  const result = match(job, hosts);
-  assert(result[0].id === 'silent', 'missing gpu_util_pct counts as 0, as it did before');
-  assert(result[1].id === 'reported', 'the reporting host ranks second');
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['idle', 'busy', 'silent'], 'a host that reports nothing ranks behind one that reports 95%');
+
+  // The comparator says the same thing on its own.
+  const reported = {id: 'r', gpu_util_pct: 99};
+  const unreported = {id: 'u'};
+  assert(compareHosts(reported, unreported) < 0, 'reported utilisation sorts ahead of unreported');
+  assert(compareHosts(unreported, reported) > 0, 'comparator stays antisymmetric');
+}
+
+function testUnreportedFreeMemoryRanksLastWithinUtilTie() {
+  const job = { required_min_vram_mb: 4000 };
+  const hosts = [
+    {id: 'no-mem', model: 'A100', vram_mb: 40960, gpu_util_pct: 10, timestamp: 2000},
+    {id: 'tiny-mem', model: 'A100', vram_mb: 40960, gpu_util_pct: 10, free_memory_mb: 1, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['tiny-mem', 'no-mem'], 'inside a utilisation tie, 1MB reported beats free_memory_mb unreported');
+}
+
+// Among hosts that all stay silent the existing order still decides, so the
+// ranking never becomes arbitrary.
+function testUnreportedHostsStillOrderedAmongThemselves() {
+  const job = { required_min_vram_mb: 4000 };
+  const hosts = [
+    {id: 'z-old', model: 'A100', vram_mb: 40960, timestamp: 1000},
+    {id: 'a-new', model: 'A100', vram_mb: 40960, timestamp: 2000},
+    {id: 'b-new', model: 'A100', vram_mb: 40960, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['a-new', 'b-new', 'z-old'], 'silent hosts fall back to timestamp then id');
+}
+
+// The mirror-image hole in the filter: the old `typeof === "number" && >` test
+// never looked at a host without the field, so a silent host passed even
+// max_util_pct: 0.
+function testMaxUtilPctDropsUnreportedHost() {
+  const hosts = [
+    {id: 'silent', model: 'A100', vram_mb: 40960},
+    {id: 'idle', model: 'A100', vram_mb: 40960, gpu_util_pct: 4, free_memory_mb: 30000, timestamp: 2000},
+    {id: 'busy', model: 'A100', vram_mb: 40960, gpu_util_pct: 80, free_memory_mb: 1000, timestamp: 2000}
+  ];
+  const strict = match({required_min_vram_mb: 4000, max_util_pct: 0}, hosts);
+  assert(strict.length === 0, 'max_util_pct: 0 matches nobody - a silent host cannot claim to be idle');
+
+  const capped = match({required_min_vram_mb: 4000, max_util_pct: 10}, hosts).map(h => h.id);
+  assert.deepStrictEqual(capped, ['idle'], 'only a host that reported low load clears the cap');
+}
+
+function testNoMaxUtilPctStillKeepsUnreportedHost() {
+  const job = { required_min_vram_mb: 4000 };
+  const hosts = [
+    {id: 'silent', model: 'A100', vram_mb: 40960},
+    {id: 'idle', model: 'A100', vram_mb: 40960, gpu_util_pct: 4, free_memory_mb: 30000, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['idle', 'silent'], 'without a cap a silent host is still matchable, just ranked last');
 }
 
 function testInputArrayNotMutated() {
