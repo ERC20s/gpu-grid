@@ -166,6 +166,12 @@ function validateJob(job) {
     }
   }
 
+  if (job.required_min_free_memory_mb !== undefined) {
+    if (!isFiniteNumber(job.required_min_free_memory_mb) || job.required_min_free_memory_mb < 0) {
+      return 'job.required_min_free_memory_mb must be a non-negative number';
+    }
+  }
+
   if (job.acceptable_gpu_models !== undefined) {
     if (!Array.isArray(job.acceptable_gpu_models)) {
       return 'job.acceptable_gpu_models must be an array of strings';

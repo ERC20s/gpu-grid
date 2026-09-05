@@ -15,6 +15,9 @@ function runTests() {
   testUnreportedFreeMemoryRanksLastWithinUtilTie();
   testUnreportedHostsStillOrderedAmongThemselves();
   testMaxUtilPctDropsUnreportedHost();
+  testFreeMemoryFilterRejectsTooSmall();
+  testFreeMemoryFilterExcludesUnreported();
+  testFreeMemoryFieldAbsentKeepsBehavior();
   testNoMaxUtilPctStillKeepsUnreportedHost();
   testInputArrayNotMutated();
   testCompareHostsExported();
@@ -187,6 +190,37 @@ function testNoMaxUtilPctStillKeepsUnreportedHost() {
   ];
   const ids = match(job, hosts).map(h => h.id);
   assert.deepStrictEqual(ids, ['idle', 'silent'], 'without a cap a silent host is still matchable, just ranked last');
+}
+
+// New free-memory filter unit tests
+function testFreeMemoryFilterRejectsTooSmall() {
+  const job = { required_min_vram_mb: 4000, required_min_free_memory_mb: 1024 };
+  const hosts = [
+    {id: 'small', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, free_memory_mb: 1000, timestamp: 2000},
+    {id: 'ok', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, free_memory_mb: 2000, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['ok'], 'hosts with too little free memory are rejected');
+}
+
+function testFreeMemoryFilterExcludesUnreported() {
+  const job = { required_min_vram_mb: 4000, required_min_free_memory_mb: 1024 };
+  const hosts = [
+    {id: 'no-mem', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, timestamp: 2000},
+    {id: 'ok', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, free_memory_mb: 2000, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['ok'], 'hosts that did not report free_memory_mb are excluded when job asks for a minimum');
+}
+
+function testFreeMemoryFieldAbsentKeepsBehavior() {
+  const job = { required_min_vram_mb: 4000 };
+  const hosts = [
+    {id: 'no-mem', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, timestamp: 2000},
+    {id: 'ok', model: 'A100', vram_mb: 40960, gpu_util_pct: 1, free_memory_mb: 2000, timestamp: 2000}
+  ];
+  const ids = match(job, hosts).map(h => h.id);
+  assert.deepStrictEqual(ids, ['ok', 'no-mem'], 'if the job does not ask for free memory, silence remains matchable and ranked last');
 }
 
 function testInputArrayNotMutated() {

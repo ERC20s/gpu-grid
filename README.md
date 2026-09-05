@@ -6,7 +6,7 @@ Scheduler API (added by proposal):
 The scheduler provides a minimal HTTP endpoint POST /match which accepts a JSON payload:
 
 {
-  "job": {"required_min_vram_mb": 4096, "acceptable_gpu_models": ["A100"], "max_util_pct": 50},
+  "job": {"required_min_vram_mb": 4096, "required_min_free_memory_mb": 1024, "acceptable_gpu_models": ["A100"], "max_util_pct": 50},
   "hosts": [ {"id": "host-1", "model": "A100", "vram_mb": 40960, "gpu_util_pct": 10, "free_memory_mb": 20000, "timestamp": 1620000000} ]
 }
 

@@ -71,6 +71,11 @@ function match(job, hosts) {
   // never looked at it, so a silent host passed max_util_pct: 0.
   const hasMaxUtil = isReported(job.max_util_pct);
 
+  // A free-memory floor filter: when the job explicitly requests a minimum
+  // free GPU memory, a host that did not report free_memory_mb is excluded
+  // (unknown is not acceptable), and hosts with too little free memory fail.
+  const hasMinFree = isReported(job.required_min_free_memory_mb);
+
   const candidates = hosts.filter(h => {
     if (typeof h.vram_mb !== 'number') return false;
     if (h.vram_mb < requiredVram) return false;
@@ -78,6 +83,10 @@ function match(job, hosts) {
     if (hasMaxUtil) {
       if (!isReported(h.gpu_util_pct)) return false;
       if (h.gpu_util_pct > job.max_util_pct) return false;
+    }
+    if (hasMinFree) {
+      if (!isReported(h.free_memory_mb)) return false;
+      if (h.free_memory_mb < job.required_min_free_memory_mb) return false;
     }
     return true;
   });
