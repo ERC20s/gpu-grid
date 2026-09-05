@@ -21,6 +21,8 @@ async function runTests() {
 
   await testPostHost(port);
   await testGetHosts(port);
+  await testGetHostById(port);
+  await testGetUnknownHost(port);
   await testMatchUsesRegistry(port);
   await testRejectsInvalidHost(port);
   await testBulkPostAddsAllHosts(port);
@@ -45,6 +47,24 @@ async function testGetHosts(port) {
   const payload = JSON.parse(res.body);
   assert(Array.isArray(payload.hosts), 'hosts array returned');
   assert(payload.hosts.length >= 1, 'at least one host present');
+}
+
+// New: ensure GET /hosts/:id returns the annotated host object for a known id
+async function testGetHostById(port) {
+  const res = await request({method: 'GET', port, path: '/hosts/host-1'});
+  assert(res.statusCode === 200, 'GET /hosts/:id returns 200 for known id');
+  const h = JSON.parse(res.body);
+  assert(h.id === 'host-1', 'host id matches');
+  assert(typeof h.last_seen_ms_ago === 'number', 'last_seen_ms_ago present');
+  assert(typeof h.stale === 'boolean', 'stale flag present');
+}
+
+// New: unknown id returns 404 and error code
+async function testGetUnknownHost(port) {
+  const res = await request({method: 'GET', port, path: '/hosts/does-not-exist'});
+  assert(res.statusCode === 404, 'GET /hosts/:id returns 404 for unknown id');
+  const p = JSON.parse(res.body);
+  assert(p.error === 'not_found', 'error code for not found');
 }
 
 async function testMatchUsesRegistry(port) {

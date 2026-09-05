@@ -320,6 +320,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /hosts/:id -> return annotated single host (does not evict stale entries)
+  if (req.method === 'GET' && path.startsWith('/hosts/')) {
+    const id = path.slice('/hosts/'.length);
+    const entry = hostRegistry.get(id);
+    if (entry !== undefined) {
+      const now = Date.now();
+      const age = now - entry.seenAt;
+      const ttl = hostTtlMs();
+      const annotated = Object.assign({}, entry.host, {
+        stale: age > ttl,
+        last_seen_ms_ago: age
+      });
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(annotated));
+      return;
+    }
+    res.writeHead(404, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({error: 'not_found'}));
+    return;
+  }
+
   // GET /health -> simple health and readiness check. Returns a small JSON with
   // deterministic fields that do not expose internal registry metrics.
   if (req.method === 'GET' && path === '/health') {
