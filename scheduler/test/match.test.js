@@ -44,6 +44,8 @@ async function runTests() {
   await testRejectsBadJobShape(port);
   await testRejectsBadFilterTypes(port);
   await testRejectsBadHostsArray(port);
+  await testRejectsBadRequiredMinFreeMemory(port);
+  await testFreeMemoryFilterWithExplicitHosts(port);
   await testUnknownJobFieldsIgnored(port);
   await testUnreportedUtilRanksLastOverHttp(port);
   await testMaxUtilPctDropsUnreportedHostOverHttp(port);
