@@ -220,6 +220,23 @@ function validateMatchPayload(payload) {
 const server = http.createServer((req, res) => {
   const path = pathOf(req.url || '');
 
+  // Add permissive CORS headers for browser clients. These are intentionally
+  // permissive (Access-Control-Allow-Origin: *) so a web console served from a
+  // different origin can interact with the scheduler. If a stricter policy is
+  // desired later this header can be narrowed to an allowlist or configured.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+  // Handle preflight requests quickly without exercising body parsing.
+  if (req.method === 'OPTIONS') {
+    // 204 No Content with CORS headers lets browsers proceed with the real
+    // request. We do not send a body.
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // POST /hosts -> accept single host JSON, validate and upsert
   if (req.method === 'POST' && path === '/hosts') {
     let body = '';
