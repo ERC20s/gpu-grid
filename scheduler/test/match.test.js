@@ -127,6 +127,27 @@ async function testRejectsBadHostsArray(port) {
   assert(payload.matches.length === 1 && payload.matches[0].id === 'explicit', 'explicit hosts are matched, not the registry');
 }
 
+// New tests for required_min_free_memory_mb behaviour
+async function testRejectsBadRequiredMinFreeMemory(port) {
+  await expectInvalidJob(port, {job: {required_min_free_memory_mb: '1024'}}, 'required_min_free_memory_mb as a string');
+  await expectInvalidJob(port, {job: {required_min_free_memory_mb: -1}}, 'a negative required_min_free_memory_mb');
+}
+
+async function testFreeMemoryFilterWithExplicitHosts(port) {
+  const body = {
+    job: {required_min_vram_mb: 1000, required_min_free_memory_mb: 1024},
+    hosts: [
+      {id: 'h1', model: 'A100', vram_mb: 40960, gpu_util_pct: 3, free_memory_mb: 2000, timestamp: 1620000000},
+      {id: 'h2', model: 'A100', vram_mb: 40960, gpu_util_pct: 3, free_memory_mb: 512, timestamp: 1620000000},
+      {id: 'h3', model: 'A100', vram_mb: 40960, gpu_util_pct: 3, timestamp: 1620000000}
+    ]
+  };
+  const res = await postMatch(port, JSON.stringify(body));
+  assert(res.statusCode === 200, 'explicit hosts path should return 200');
+  const ids = JSON.parse(res.body).matches.map(h => h.id);
+  assert.deepStrictEqual(ids, ['h1'], 'only hosts that reported enough free_memory_mb are returned');
+}
+
 async function testUnknownJobFieldsIgnored(port) {
   // Fields the matcher does not read (as in tests/fixtures/simple_job.json)
   // must not make a job invalid.
