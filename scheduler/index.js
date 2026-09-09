@@ -322,7 +322,15 @@ const server = http.createServer((req, res) => {
 
   // GET /hosts/:id -> return annotated single host (does not evict stale entries)
   if (req.method === 'GET' && path.startsWith('/hosts/')) {
-    const id = path.slice('/hosts/'.length);
+    const raw = path.slice('/hosts/'.length);
+    let id;
+    try {
+      id = decodeURIComponent(raw);
+    } catch (err) {
+      res.writeHead(400, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({error: 'invalid_host_id', message: 'malformed host id'}));
+      return;
+    }
     const entry = hostRegistry.get(id);
     if (entry !== undefined) {
       const now = Date.now();
