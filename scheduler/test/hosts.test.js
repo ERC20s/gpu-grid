@@ -22,6 +22,7 @@ async function runTests() {
   await testPostHost(port);
   await testGetHosts(port);
   await testGetHostById(port);
+  await testGetHostByEncodedId(port);
   await testGetUnknownHost(port);
   await testMatchUsesRegistry(port);
   await testRejectsInvalidHost(port);
@@ -57,6 +58,21 @@ async function testGetHostById(port) {
   assert(h.id === 'host-1', 'host id matches');
   assert(typeof h.last_seen_ms_ago === 'number', 'last_seen_ms_ago present');
   assert(typeof h.stale === 'boolean', 'stale flag present');
+}
+
+// New: an id with characters that must be percent-encoded (e.g. a space) can
+// still be retrieved when the caller encodes it in the URL, as browsers and
+// many HTTP clients do.
+async function testGetHostByEncodedId(port) {
+  const host = {id: 'host with space', model: 'A100', vram_mb: 24576, timestamp: 1620000000};
+  const postRes = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(host));
+  assert(postRes.statusCode === 200, 'POST /hosts should return 200 for encoded-id host');
+
+  const encodedPath = '/hosts/' + encodeURIComponent(host.id);
+  const res = await request({method: 'GET', port, path: encodedPath});
+  assert(res.statusCode === 200, 'GET /hosts/:id returns 200 for URL-encoded id');
+  const h = JSON.parse(res.body);
+  assert(h.id === host.id, 'decoded host id matches original');
 }
 
 // New: unknown id returns 404 and error code
