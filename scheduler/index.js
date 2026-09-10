@@ -483,6 +483,9 @@ const server = http.createServer((req, res) => {
   // POST /match -> use payload.hosts if provided, otherwise use LIVE registry
   if (req.method === 'POST' && path === '/match') {
     const limit = maxRequestSizeBytes();
+    // Increment POST /match counter on receipt so early-rejected requests
+    // (oversized Content-Length, malformed bodies) are visible in metrics.
+    posts_match_total += 1;
 
     // Early Content-Length check: if the client declares a Content-Length
     // larger than the configured limit, reject early with 413 and close the
@@ -532,8 +535,6 @@ const server = http.createServer((req, res) => {
         const job = payload.job;
         const hosts = payload.hosts !== undefined ? payload.hosts : freshHosts();
         const matches = match(job, hosts);
-+        // Increment POST /match counter
-+        posts_match_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify({matches}));
       } catch (err) {
