@@ -35,6 +35,12 @@ function maxRequestSizeBytes() {
 // so callers keep seeing exactly the report they posted.
 const hostRegistry = new Map();
 
+// Simple in-memory counters for Prometheus-style metrics. Kept tiny and
+// in-process: these are best-effort and reset on restart, which is fine for
+// the scheduler service this repo provides.
+let posts_hosts_total = 0;
+let posts_match_total = 0;
+
 // Live hosts only. Entries past the TTL are removed from the map as they are
 // read, so a grid that churns through hosts does not grow without bound.
 function freshHosts(now = Date.now()) {
@@ -312,6 +318,9 @@ const server = http.createServer((req, res) => {
             hostRegistry.set(cleaned.id, {host: cleaned, seenAt: now});
             stored.push(cleaned);
           }
++          // Increment POST /hosts counter
++          posts_hosts_total += 1;
++          
           res.writeHead(200, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({hosts: stored}));
           return;
@@ -332,6 +341,8 @@ const server = http.createServer((req, res) => {
         delete cleaned.last_seen_ms_ago;
 
         hostRegistry.set(cleaned.id, {host: cleaned, seenAt: Date.now()});
++        // Increment POST /hosts counter
++        posts_hosts_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify(cleaned));
       } catch (err) {
@@ -427,6 +438,48 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /metrics -> Prometheus-style plain text metrics useful for scraping.
+  if (req.method === 'GET' && path === '/metrics') {
+    const now = Date.now();
+    const uptimeMs = Math.floor(process.uptime() * 1000);
+    const annotated = allHostsAnnotated(now);
+    const registered_host_count = annotated.length;
+    const live_host_count = annotated.filter(h => !h.stale).length;
+    const host_ttl_seconds = Math.floor(hostTtlMs() / 1000);
+
+    // Build a plain text Prometheus-style metrics response with HELP/TYPE
+    // comments. Names are stable and prefixed to reduce collision risk.
+    const lines = [];
+    lines.push('# HELP gpu_grid_live_host_count Number of hosts considered live (not stale)');
+    lines.push('# TYPE gpu_grid_live_host_count gauge');
+    lines.push(`gpu_grid_live_host_count ${live_host_count}`);
+
+    lines.push('# HELP gpu_grid_registered_host_count Total hosts in the registry (annotated view)');
+    lines.push('# TYPE gpu_grid_registered_host_count gauge');
+    lines.push(`gpu_grid_registered_host_count ${registered_host_count}`);
+
+    lines.push('# HELP gpu_grid_uptime_ms Process uptime in milliseconds');
+    lines.push('# TYPE gpu_grid_uptime_ms gauge');
+    lines.push(`gpu_grid_uptime_ms ${uptimeMs}`);
+
+    lines.push('# HELP gpu_grid_host_ttl_seconds Host TTL in seconds');
+    lines.push('# TYPE gpu_grid_host_ttl_seconds gauge');
+    lines.push(`gpu_grid_host_ttl_seconds ${host_ttl_seconds}`);
+
+    lines.push('# HELP gpu_grid_posts_hosts_total Total number of POST /hosts requests received');
+    lines.push('# TYPE gpu_grid_posts_hosts_total counter');
+    lines.push(`gpu_grid_posts_hosts_total ${posts_hosts_total}`);
+
+    lines.push('# HELP gpu_grid_posts_match_total Total number of POST /match requests received');
+    lines.push('# TYPE gpu_grid_posts_match_total counter');
+    lines.push(`gpu_grid_posts_match_total ${posts_match_total}`);
+
+    const body = lines.join('\n') + '\n';
+    res.writeHead(200, {'Content-Type': 'text/plain; version=0.0.4'});
+    res.end(body);
+    return;
+  }
+
   // POST /match -> use payload.hosts if provided, otherwise use LIVE registry
   if (req.method === 'POST' && path === '/match') {
     const limit = maxRequestSizeBytes();
@@ -479,6 +532,8 @@ const server = http.createServer((req, res) => {
         const job = payload.job;
         const hosts = payload.hosts !== undefined ? payload.hosts : freshHosts();
         const matches = match(job, hosts);
++        // Increment POST /match counter
++        posts_match_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify({matches}));
       } catch (err) {
