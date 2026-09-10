@@ -24,6 +24,9 @@ async function runTests() {
   await testGetHostById(port);
   await testGetHostByEncodedId(port);
   await testGetUnknownHost(port);
+  await testDeleteHostById(port);
+  await testDeleteUnknownHost(port);
+  await testDeleteHostByEncodedId(port);
   await testMatchUsesRegistry(port);
   await testRejectsInvalidHost(port);
   await testBulkPostAddsAllHosts(port);
@@ -81,6 +84,53 @@ async function testGetUnknownHost(port) {
   assert(res.statusCode === 404, 'GET /hosts/:id returns 404 for unknown id');
   const p = JSON.parse(res.body);
   assert(p.error === 'not_found', 'error code for not found');
+}
+
+// New: deleting a known host removes it from GET /hosts and GET /hosts/:id
+// returns 404 for it afterwards.
+async function testDeleteHostById(port) {
+  const host = {id: 'host-delete-me', model: 'A100', vram_mb: 40960, timestamp: 1620000000};
+  const postRes = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(host));
+  assert(postRes.statusCode === 200, 'POST /hosts should return 200 for delete-target host');
+
+  const delRes = await request({method: 'DELETE', port, path: '/hosts/host-delete-me'});
+  assert(delRes.statusCode === 200, 'DELETE /hosts/:id returns 200 for known id');
+  const delPayload = JSON.parse(delRes.body);
+  assert(delPayload.deleted === true, 'deleted flag is true');
+  assert(delPayload.id === 'host-delete-me', 'deleted response echoes id');
+
+  const getRes = await request({method: 'GET', port, path: '/hosts/host-delete-me'});
+  assert(getRes.statusCode === 404, 'GET /hosts/:id returns 404 after delete');
+
+  const list = await request({method: 'GET', port, path: '/hosts'});
+  const payload = JSON.parse(list.body);
+  const ids = payload.hosts.map(h => h.id);
+  assert(!ids.includes('host-delete-me'), 'deleted host absent from GET /hosts');
+}
+
+// New: deleting an unknown id returns 404 with the same error shape as GET.
+async function testDeleteUnknownHost(port) {
+  const res = await request({method: 'DELETE', port, path: '/hosts/does-not-exist'});
+  assert(res.statusCode === 404, 'DELETE /hosts/:id returns 404 for unknown id');
+  const p = JSON.parse(res.body);
+  assert(p.error === 'not_found', 'error code for not found');
+}
+
+// New: a URL-encoded id round-trips through DELETE the same way GET already
+// handles it (see testGetHostByEncodedId).
+async function testDeleteHostByEncodedId(port) {
+  const host = {id: 'host to delete', model: 'A100', vram_mb: 24576, timestamp: 1620000000};
+  const postRes = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(host));
+  assert(postRes.statusCode === 200, 'POST /hosts should return 200 for encoded-id delete host');
+
+  const encodedPath = '/hosts/' + encodeURIComponent(host.id);
+  const delRes = await request({method: 'DELETE', port, path: encodedPath});
+  assert(delRes.statusCode === 200, 'DELETE /hosts/:id returns 200 for URL-encoded id');
+  const delPayload = JSON.parse(delRes.body);
+  assert(delPayload.id === host.id, 'decoded id echoed back in delete response');
+
+  const getRes = await request({method: 'GET', port, path: encodedPath});
+  assert(getRes.statusCode === 404, 'GET /hosts/:id returns 404 after encoded-id delete');
 }
 
 async function testMatchUsesRegistry(port) {

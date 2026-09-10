@@ -84,6 +84,12 @@ read, and never returned by POST /match when the payload carries no explicit hos
 - GET /hosts?include_stale=1 lists every registry entry, each with stale (boolean) and
   last_seen_ms_ago (number), for the web console.
 - A POST /match payload that supplies its own hosts array is unaffected by the TTL.
+- DELETE /hosts/:id is the explicit counterpart to TTL expiry: a host that is
+  decommissioned, drained for maintenance, or crashed cleanly can be removed from the
+  registry immediately instead of staying matchable for up to HOST_TTL_SECONDS after it
+  is gone. It decodes a URL-encoded id the same way GET /hosts/:id does, returns
+  {deleted: true, id} with 200 when the entry existed, and {error: 'not_found'} with 404
+  when it did not.
 
 Set HOST_TTL_SECONDS shorter than the reporting interval and the grid will look empty;
 keep it comfortably above the agent's report period. See .env.example.
