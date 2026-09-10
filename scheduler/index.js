@@ -239,9 +239,27 @@ const server = http.createServer((req, res) => {
 
   // POST /hosts -> accept single host JSON, validate and upsert
   if (req.method === 'POST' && path === '/hosts') {
+    const limit = maxRequestSizeBytes();
+
+    // Early pre-flight Content-Length check: if the client declares a
+    // Content-Length larger than the server's configured limit, reject with
+    // 413 immediately and close the connection. This saves CPU and bandwidth
+    // by avoiding reading the body at all for obviously oversized requests.
+    const rawCL = req.headers && req.headers['content-length'];
+    if (rawCL !== undefined) {
+      const parsedCL = Number(rawCL);
+      if (Number.isFinite(parsedCL) && parsedCL > limit) {
+        if (!res.headersSent) {
+          res.writeHead(413, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'request_too_large', message: `declared Content-Length ${parsedCL} exceeds ${limit} bytes`}));
+        }
+        try { req.destroy(); } catch (e) {}
+        return;
+      }
+    }
+
     let body = '';
     let received = 0;
-    const limit = maxRequestSizeBytes();
     let tooLarge = false;
 
     req.on('data', chunk => {
@@ -405,9 +423,27 @@ const server = http.createServer((req, res) => {
 
   // POST /match -> use payload.hosts if provided, otherwise use LIVE registry
   if (req.method === 'POST' && path === '/match') {
+    const limit = maxRequestSizeBytes();
+
+    // Early Content-Length check: if the client declares a Content-Length
+    // larger than the configured limit, reject early with 413 and close the
+    // connection. Keep the streaming size guard for requests without a
+    // Content-Length header (chunked transfer) so behaviour is unchanged.
+    const rawCL = req.headers && req.headers['content-length'];
+    if (rawCL !== undefined) {
+      const parsedCL = Number(rawCL);
+      if (Number.isFinite(parsedCL) && parsedCL > limit) {
+        if (!res.headersSent) {
+          res.writeHead(413, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'request_too_large', message: `declared Content-Length ${parsedCL} exceeds ${limit} bytes`}));
+        }
+        try { req.destroy(); } catch (e) {}
+        return;
+      }
+    }
+
     let body = '';
     let received = 0;
-    const limit = maxRequestSizeBytes();
     let tooLarge = false;
 
     req.on('data', chunk => {

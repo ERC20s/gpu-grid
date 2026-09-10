@@ -31,6 +31,13 @@ async function testRejectsOversizeMatch(port) {
   const large = 'a'.repeat(limit + 100);
   const payload = JSON.stringify({job: {required_min_vram_mb: 4096}, comment: large});
 
+  // Case A: Early rejection based on declared Content-Length header.
+  const earlyRes = await request({method: 'POST', port, path: '/match', headers: {'Content-Length': String(limit + 100)}});
+  assert(earlyRes.statusCode === 413, 'early rejection for oversized Content-Length on POST /match should return 413');
+  const earlyBody = JSON.parse(earlyRes.body);
+  assert(earlyBody.error === 'request_too_large', 'error code for early oversized request');
+
+  // Case B: Legacy behaviour — send an oversized body and expect 413 as before.
   const res = await request({method: 'POST', port, path: '/match'}, payload);
   assert(res.statusCode === 413, 'oversized POST /match should return 413');
   const body = JSON.parse(res.body);
