@@ -225,7 +225,7 @@ const server = http.createServer((req, res) => {
   // different origin can interact with the scheduler. If a stricter policy is
   // desired later this header can be narrowed to an allowlist or configured.
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   // Handle preflight requests quickly without exercising body parsing.
@@ -342,6 +342,32 @@ const server = http.createServer((req, res) => {
       });
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify(annotated));
+      return;
+    }
+    res.writeHead(404, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({error: 'not_found'}));
+    return;
+  }
+
+  // DELETE /hosts/:id -> remove a host from the registry immediately, rather
+  // than waiting out HOST_TTL_SECONDS. Lets a host that is decommissioned,
+  // drained for maintenance, or crashed cleanly stop being matchable right
+  // away, instead of staying eligible for POST /match for up to the TTL
+  // window after it is provably gone.
+  if (req.method === 'DELETE' && path.startsWith('/hosts/')) {
+    const raw = path.slice('/hosts/'.length);
+    let id;
+    try {
+      id = decodeURIComponent(raw);
+    } catch (err) {
+      res.writeHead(400, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({error: 'invalid_host_id', message: 'malformed host id'}));
+      return;
+    }
+    const existed = hostRegistry.delete(id);
+    if (existed) {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({deleted: true, id}));
       return;
     }
     res.writeHead(404, {'Content-Type': 'application/json'});
