@@ -46,6 +46,11 @@ async function testHealthAfterPost(port) {
   assert(res.statusCode === 200, 'GET /health after POST should return 200');
   const payload = JSON.parse(res.body);
   assert(payload.status === 'ok', 'status ok after post');
+  // New numeric counts should be present and sensible.
+  assert(typeof payload.registered_host_count === 'number', 'registered_host_count is a number');
+  assert(typeof payload.live_host_count === 'number', 'live_host_count is a number');
+  assert(payload.registered_host_count >= 1, 'registered_host_count >= 1 after posting a host');
+  assert(payload.live_host_count >= 1, 'live_host_count >= 1 after posting a host');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });

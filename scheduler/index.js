@@ -411,12 +411,18 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && path === '/health') {
     const now = Date.now();
     const uptimeMs = Math.floor(process.uptime() * 1000);
+    // Use the annotated view so we do not evict stale entries while counting.
+    const annotated = allHostsAnnotated(now);
+    const registered_host_count = annotated.length;
+    const live_host_count = annotated.filter(h => !h.stale).length;
     res.writeHead(200, {'Content-Type': 'application/json'});
     res.end(JSON.stringify({
       status: 'ok',
       now,
       uptime_ms: uptimeMs,
-      host_ttl_seconds: Math.floor(hostTtlMs() / 1000)
+      host_ttl_seconds: Math.floor(hostTtlMs() / 1000),
+      live_host_count,
+      registered_host_count
     }));
     return;
   }
