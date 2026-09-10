@@ -20,6 +20,7 @@ async function runTests() {
   const port = server.address().port;
 
   await testPostHost(port);
+  await testSanitisesReservedFields(port);
   await testGetHosts(port);
   await testGetHostById(port);
   await testGetHostByEncodedId(port);
@@ -43,6 +44,34 @@ async function testPostHost(port) {
   assert(res.statusCode === 200, 'POST /hosts should return 200');
   const returned = JSON.parse(res.body);
   assert(returned.id === host.id, 'returned host has id');
+}
+
+async function testSanitisesReservedFields(port) {
+  const host = {
+    id: 'host-reserved-1',
+    model: 'A100',
+    vram_mb: 16384,
+    timestamp: 1620000000,
+    seenAt: 123456789,
+    stale: true,
+    last_seen_ms_ago: 99999
+  };
+
+  const postRes = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify(host));
+  assert(postRes.statusCode === 200, 'POST /hosts should return 200');
+  const returned = JSON.parse(postRes.body);
+  assert(returned.id === host.id, 'returned host has id');
+  assert(returned.seenAt === undefined && returned.stale === undefined && returned.last_seen_ms_ago === undefined, 'reserved fields removed from response');
+
+  // Check stored entry does not carry the reserved fields in the host object
+  const entry = server.hostRegistry.get(host.id);
+  assert(entry, 'registry entry exists');
+  assert(entry.host.seenAt === undefined, 'stored host does not contain seenAt');
+  assert(entry.host.stale === undefined, 'stored host does not contain stale');
+  assert(entry.host.last_seen_ms_ago === undefined, 'stored host does not contain last_seen_ms_ago');
+
+  // The server should still have a server-side seenAt stamp for staleness
+  assert(typeof entry.seenAt === 'number', 'entry carries a server-side seenAt stamp');
 }
 
 async function testGetHosts(port) {

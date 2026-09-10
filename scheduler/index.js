@@ -281,12 +281,18 @@ const server = http.createServer((req, res) => {
             }
             seen.add(id);
           }
-          // All valid and unique; upsert all
+          // All valid and unique; upsert all, but first remove any reserved
+          // server-only fields a reporter might have sent so clients cannot
+          // inject seenAt/stale/last_seen_ms_ago into the stored host object.
           const stored = [];
           const now = Date.now();
           for (const h of parsed) {
-            hostRegistry.set(h.id, {host: h, seenAt: now});
-            stored.push(h);
+            const cleaned = Object.assign({}, h);
+            delete cleaned.seenAt;
+            delete cleaned.stale;
+            delete cleaned.last_seen_ms_ago;
+            hostRegistry.set(cleaned.id, {host: cleaned, seenAt: now});
+            stored.push(cleaned);
           }
           res.writeHead(200, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({hosts: stored}));
@@ -300,9 +306,16 @@ const server = http.createServer((req, res) => {
         const err = validateHost(host);
         if (err) return validationError(res, err);
 
-        hostRegistry.set(host.id, {host, seenAt: Date.now()});
+        // Remove server-only fields that a reporter might have supplied so the
+        // stored host object cannot be confused with server annotations.
+        const cleaned = Object.assign({}, host);
+        delete cleaned.seenAt;
+        delete cleaned.stale;
+        delete cleaned.last_seen_ms_ago;
+
+        hostRegistry.set(cleaned.id, {host: cleaned, seenAt: Date.now()});
         res.writeHead(200, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify(host));
+        res.end(JSON.stringify(cleaned));
       } catch (err) {
         // JSON.parse or other unexpected errors
         res.writeHead(400, {'Content-Type': 'application/json'});
