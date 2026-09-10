@@ -246,6 +246,9 @@ const server = http.createServer((req, res) => {
   // POST /hosts -> accept single host JSON, validate and upsert
   if (req.method === 'POST' && path === '/hosts') {
     const limit = maxRequestSizeBytes();
+    // Increment POST /hosts counter on receipt so early-rejected requests
+    // (oversized Content-Length, malformed bodies) are visible in metrics.
+    posts_hosts_total += 1;
 
     // Early pre-flight Content-Length check: if the client declares a
     // Content-Length larger than the server's configured limit, reject with
@@ -318,9 +321,6 @@ const server = http.createServer((req, res) => {
             hostRegistry.set(cleaned.id, {host: cleaned, seenAt: now});
             stored.push(cleaned);
           }
-+          // Increment POST /hosts counter
-+          posts_hosts_total += 1;
-+          
           res.writeHead(200, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({hosts: stored}));
           return;
@@ -341,8 +341,6 @@ const server = http.createServer((req, res) => {
         delete cleaned.last_seen_ms_ago;
 
         hostRegistry.set(cleaned.id, {host: cleaned, seenAt: Date.now()});
-+        // Increment POST /hosts counter
-+        posts_hosts_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify(cleaned));
       } catch (err) {
