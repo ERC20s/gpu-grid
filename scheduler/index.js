@@ -507,3 +507,39 @@ module.exports.freshHosts = freshHosts;
 module.exports.validateHost = validateHost;
 module.exports.validateJob = validateJob;
 module.exports.validateMatchPayload = validateMatchPayload;
+
+// Background cleanup of stale registry entries.
+// cleanupStale(now): iterate hostRegistry and remove entries older than TTL.
+function cleanupStale(now = Date.now()) {
+  const ttl = hostTtlMs();
+  for (const [id, entry] of hostRegistry) {
+    if (now - entry.seenAt > ttl) {
+      hostRegistry.delete(id);
+    }
+  }
+}
+
+// Start a periodic sweeper that runs at an adaptive interval based on the TTL.
+let _cleanupInterval = null;
+function startCleanup() {
+  if (_cleanupInterval !== null) return;
+  const period = Math.max(1000, Math.floor(hostTtlMs() / 2));
+  _cleanupInterval = setInterval(() => cleanupStale(), period);
+}
+
+// Stop the periodic sweeper.
+function stopCleanup() {
+  if (_cleanupInterval !== null) {
+    clearInterval(_cleanupInterval);
+    _cleanupInterval = null;
+  }
+}
+
+// Ensure the cleaner starts when the server begins listening, and is cleared on close.
+server.on('listening', startCleanup);
+server.on('close', stopCleanup);
+
+// Export the helpers for tests and maintainers.
+module.exports.cleanupStale = cleanupStale;
+module.exports.startCleanup = startCleanup;
+module.exports.stopCleanup = stopCleanup;
