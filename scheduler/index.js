@@ -247,6 +247,10 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && path === '/hosts') {
     const limit = maxRequestSizeBytes();
 
+    // Count this incoming POST /hosts attempt immediately so early rejections
+    // (invalid Content-Length, oversized body, malformed JSON) are visible.
+    posts_hosts_total += 1;
+
     // Early pre-flight Content-Length check: if the client declares a
     // Content-Length larger than the server's configured limit, reject with
     // 413 immediately and close the connection. This saves CPU and bandwidth
@@ -318,9 +322,6 @@ const server = http.createServer((req, res) => {
             hostRegistry.set(cleaned.id, {host: cleaned, seenAt: now});
             stored.push(cleaned);
           }
-+          // Increment POST /hosts counter
-+          posts_hosts_total += 1;
-+          
           res.writeHead(200, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({hosts: stored}));
           return;
@@ -341,8 +342,6 @@ const server = http.createServer((req, res) => {
         delete cleaned.last_seen_ms_ago;
 
         hostRegistry.set(cleaned.id, {host: cleaned, seenAt: Date.now()});
-+        // Increment POST /hosts counter
-+        posts_hosts_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify(cleaned));
       } catch (err) {
@@ -532,8 +531,6 @@ const server = http.createServer((req, res) => {
         const job = payload.job;
         const hosts = payload.hosts !== undefined ? payload.hosts : freshHosts();
         const matches = match(job, hosts);
-+        // Increment POST /match counter
-+        posts_match_total += 1;
         res.writeHead(200, {'Content-Type': 'application/json'});
         res.end(JSON.stringify({matches}));
       } catch (err) {
