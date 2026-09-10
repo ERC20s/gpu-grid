@@ -31,6 +31,14 @@ async function testRejectsOversizeHost(port) {
   const large = 'a'.repeat(limit + 100);
   const payload = JSON.stringify({id: 'huge', model: 'A100', vram_mb: 40960, timestamp: 1620000000, extra: large});
 
+  // Case A: Client declares a too-large Content-Length and sends no body.
+  // The server should reject immediately based on the header alone.
+  const earlyRes = await request({method: 'POST', port, path: '/hosts', headers: {'Content-Length': String(limit + 100)}});
+  assert(earlyRes.statusCode === 413, 'early rejection for oversized Content-Length on POST /hosts should return 413');
+  const earlyBody = JSON.parse(earlyRes.body);
+  assert(earlyBody.error === 'request_too_large', 'error code for early oversized request');
+
+  // Case B: Legacy behaviour — send an oversized body and expect 413 as before.
   const res = await request({method: 'POST', port, path: '/hosts'}, payload);
   assert(res.statusCode === 413, 'oversized POST /hosts should return 413');
   const body = JSON.parse(res.body);
