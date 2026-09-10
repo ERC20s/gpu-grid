@@ -497,6 +497,42 @@ if (require.main === module) {
   server.listen(PORT, () => {
     console.log('scheduler listening on', PORT, '- host TTL', Math.floor(hostTtlMs() / 1000) + 's');
   });
+
+  // Graceful shutdown when the scheduler is run directly. We only attach
+  // handlers in the require.main branch so importing this module in tests
+  // or other processes is unaffected.
+  let _shuttingDown = false;
+  function shutdownHandler(sig) {
+    if (_shuttingDown) {
+      console.log('scheduler already shutting down; ignoring', sig);
+      return;
+    }
+    _shuttingDown = true;
+    console.log(`scheduler shutting down on ${sig}`);
+
+    // Safety fallback: force exit if server.close hangs for any reason.
+    const force = setTimeout(() => {
+      console.error('scheduler shutdown timed out, forcing exit');
+      process.exit(0);
+    }, 5000);
+
+    // Stop accepting new connections and let existing ones finish. The
+    // server 'close' event is already wired to stopCleanup(), so we rely on
+    // that to clear the interval; after close completes exit the process.
+    server.close(err => {
+      clearTimeout(force);
+      if (err) {
+        console.error('error while closing server:', err);
+        process.exit(1);
+      } else {
+        console.log('scheduler closed, exiting');
+        process.exit(0);
+      }
+    });
+  }
+
+  process.on('SIGINT', () => shutdownHandler('SIGINT'));
+  process.on('SIGTERM', () => shutdownHandler('SIGTERM'));
 }
 
 module.exports = server;
