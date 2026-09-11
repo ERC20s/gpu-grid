@@ -29,6 +29,19 @@ function maxRequestSizeBytes() {
   return Math.floor(parsed);
 }
 
+// Maximum number of unique host ids allowed in the in-memory registry. 0 = unlimited.
+const DEFAULT_MAX_HOSTS = 0;
+function maxHosts() {
+  const raw = process.env.MAX_HOSTS;
+  const parsed = Number(raw);
+  if (raw === undefined || raw === '' || !Number.isFinite(parsed)) {
+    return DEFAULT_MAX_HOSTS;
+  }
+  // Negative or zero means unlimited (0)
+  if (parsed <= 0) return 0;
+  return Math.floor(parsed);
+}
+
 // In-memory host registry: Map<id, {host, seenAt}>
 // seenAt is a SERVER-side stamp (Date.now()), deliberately kept outside the
 // host object so a host cannot claim to be alive with a forged timestamp and
@@ -317,9 +330,25 @@ const server = http.createServer((req, res) => {
             }
             seen.add(id);
           }
-          // All valid and unique; upsert all, but first remove any reserved
-          // server-only fields a reporter might have sent so clients cannot
-          // inject seenAt/stale/last_seen_ms_ago into the stored host object.
+          // All valid and unique; before upserting, enforce MAX_HOSTS cap
+          const cap = maxHosts();
+          if (cap > 0) {
+            // compute net-new unique ids that would be added
+            const incomingIds = new Set(parsed.map(h => h.id));
+            let netNew = 0;
+            for (const id of incomingIds) {
+              if (!hostRegistry.has(id)) netNew += 1;
+            }
+            if (hostRegistry.size + netNew > cap) {
+              res.writeHead(507, {'Content-Type': 'application/json'});
+              res.end(JSON.stringify({error: 'registry_full', message: 'host registry limit reached'}));
+              return;
+            }
+          }
+
+          // Upsert all, but first remove any reserved server-only fields a reporter
+          // might have sent so clients cannot inject seenAt/stale/last_seen_ms_ago
+          // into the stored host object.
           const stored = [];
           const now = Date.now();
           for (const h of parsed) {
@@ -348,6 +377,14 @@ const server = http.createServer((req, res) => {
         delete cleaned.seenAt;
         delete cleaned.stale;
         delete cleaned.last_seen_ms_ago;
+
+        // Enforce MAX_HOSTS cap for single-host upserts
+        const cap = maxHosts();
+        if (cap > 0 && !hostRegistry.has(cleaned.id) && hostRegistry.size + 1 > cap) {
+          res.writeHead(507, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'registry_full', message: 'host registry limit reached'}));
+          return;
+        }
 
         hostRegistry.set(cleaned.id, {host: cleaned, seenAt: Date.now()});
         res.writeHead(200, {'Content-Type': 'application/json'});

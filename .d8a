@@ -126,6 +126,7 @@ payments:
 keys:
   HOST_TTL_SECONDS
   MAX_REQUEST_SIZE_BYTES
+  MAX_HOSTS
 
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
