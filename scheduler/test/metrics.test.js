@@ -33,37 +33,44 @@ async function runTests() {
 }
 
 async function testMetricsBasic(port) {
-  // Seed a host so counts are non-zero
-  const host = {id: 'h-metrics', model: 'A100', vram_mb: 40960, timestamp: Date.now()};
-  const post = await request({method: 'POST', port, path: '/hosts', headers: {'Content-Type': 'application/json'}}, JSON.stringify(host));
-  assert(post.statusCode === 200, 'POST /hosts should succeed');
-
-  // Fetch metrics and record the initial POST /match counter
-  const res1 = await request({method: 'GET', port, path: '/metrics'});
-  assert(res1.statusCode === 200, 'GET /metrics should return 200');
-  assert(res1.headers['content-type'] && res1.headers['content-type'].includes('text/plain'), 'Content-Type is text/plain');
-  const body1 = res1.body;
+  // Fetch metrics first and record initial counters
+  const initial = await request({method: 'GET', port, path: '/metrics'});
+  assert(initial.statusCode === 200, 'GET /metrics should return 200');
+  assert(initial.headers['content-type'] && initial.headers['content-type'].includes('text/plain'), 'Content-Type is text/plain');
+  const bodyInitial = initial.body;
 
   // Ensure the named metrics exist
   const want = ['gpu_grid_live_host_count', 'gpu_grid_registered_host_count', 'gpu_grid_uptime_ms', 'gpu_grid_host_ttl_seconds', 'gpu_grid_posts_hosts_total', 'gpu_grid_posts_match_total'];
   for (const w of want) {
-    assert(body1.includes(w), `metrics body should include ${w}`);
+    assert(bodyInitial.includes(w), `metrics body should include ${w}`);
   }
 
-  const before = parseMetric(body1, 'gpu_grid_posts_match_total');
-  assert(Number.isFinite(before), 'gpu_grid_posts_match_total should be a number');
+  const hostsBefore = parseMetric(bodyInitial, 'gpu_grid_posts_hosts_total');
+  const matchBefore = parseMetric(bodyInitial, 'gpu_grid_posts_match_total');
+  assert(Number.isFinite(hostsBefore), 'gpu_grid_posts_hosts_total should be a number');
+  assert(Number.isFinite(matchBefore), 'gpu_grid_posts_match_total should be a number');
 
-  // POST a minimal valid match payload
+  // POST a host and assert the hosts counter increases
+  const host = {id: 'h-metrics', model: 'A100', vram_mb: 40960, timestamp: Date.now()};
+  const post = await request({method: 'POST', port, path: '/hosts', headers: {'Content-Type': 'application/json'}}, JSON.stringify(host));
+  assert(post.statusCode === 200, 'POST /hosts should succeed');
+
+  const resAfterHost = await request({method: 'GET', port, path: '/metrics'});
+  assert(resAfterHost.statusCode === 200, 'GET /metrics should return 200');
+  const hostsAfter = parseMetric(resAfterHost.body, 'gpu_grid_posts_hosts_total');
+  assert(Number.isFinite(hostsAfter), 'gpu_grid_posts_hosts_total should be a number after POST');
+  assert(hostsAfter > hostsBefore, `gpu_grid_posts_hosts_total should increase after POST /hosts (before=${hostsBefore}, after=${hostsAfter})`);
+
+  // POST a minimal valid match payload and assert the match counter increases
   const matchBody = JSON.stringify({job: {required_min_vram_mb: 1}});
   const matchRes = await request({method: 'POST', port, path: '/match', headers: {'Content-Type': 'application/json'}}, matchBody);
   assert(matchRes.statusCode === 200, 'POST /match should return 200 for a valid job');
 
-  // Re-fetch metrics and ensure the counter increased
-  const res2 = await request({method: 'GET', port, path: '/metrics'});
-  assert(res2.statusCode === 200, 'GET /metrics should return 200');
-  const after = parseMetric(res2.body, 'gpu_grid_posts_match_total');
-  assert(Number.isFinite(after), 'gpu_grid_posts_match_total should be a number after POST');
-  assert(after > before, `gpu_grid_posts_match_total should increase after POST /match (before=${before}, after=${after})`);
+  const resAfterMatch = await request({method: 'GET', port, path: '/metrics'});
+  assert(resAfterMatch.statusCode === 200, 'GET /metrics should return 200');
+  const matchAfter = parseMetric(resAfterMatch.body, 'gpu_grid_posts_match_total');
+  assert(Number.isFinite(matchAfter), 'gpu_grid_posts_match_total should be a number after POST');
+  assert(matchAfter > matchBefore, `gpu_grid_posts_match_total should increase after POST /match (before=${matchBefore}, after=${matchAfter})`);
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
