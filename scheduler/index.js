@@ -214,9 +214,18 @@ function validateMatchPayload(payload) {
     if (!Array.isArray(payload.hosts)) {
       return 'hosts must be an array';
     }
+    // Duplicate id check: reject the whole payload if any id repeats, as the
+    // POST /hosts batch path does. This prevents duplicated matches and catches
+    // client bugs that accidentally resend the same host twice.
+    const seen = new Set();
     for (let i = 0; i < payload.hosts.length; i++) {
       const err = validateHost(payload.hosts[i]);
       if (err) return `hosts[${i}]: ${err}`;
+      const id = payload.hosts[i].id;
+      if (seen.has(id)) {
+        return `hosts[${i}]: duplicate id "${id}"`;
+      }
+      seen.add(id);
     }
   }
 
