@@ -1,18 +1,20 @@
 # .d8a — who governs this repository, how to run it, and how it earns.
 # Code lands on this branch only by the named group's passed vote; delete the
 # file to withdraw consent. The three lines below, tools: and payments: are
-# generated, never hand-edited. Everything else: https://d8a.com/docs?group=d8aaaa-batch_gpu#d8a-file
+# generated, never hand-edited. items: is generated too, and is the ONE a
+# passed Code proposal MAY edit — it is where the shop is set.
+# Everything else: https://d8a.com/docs?group=admin-batch_gpu#d8a-file
 version: 1
-group: d8a:d8aaaa-batch_gpu
-proof: E9t2yZ2Ecm4UXoQfBj4bRiCepwW5QWynyAy1IVWPMnNXlS41y8CoPqAtGYMlAwR5K0IuqOG6oZeNLie33bPi6gtx7Mf-JNUvBeEocg36TkWik502A_wo0xpr_I9JoY17zD0GzzHqouLlAytAEdvoMh2ldd0cOC0MlzEnxwEM0ETW6DFnCp58PBnUXgk73tkzyx3rhYaNVgU1_xK_fKYfHm3crNHJkTIctAC1_my08Ki4CL3PB6P7jP-yuC4AXudEVZk3WTvIeUoPgKbBysMMCV7NYiI5JdDpiMQ70bGU2UurSrVLXtiEaHpHZV0DjgyLKygKRvLRSuuL5MvKcohE7g
+group: d8a:admin-batch_gpu
+proof: cVaEeC5ePdDHZ3W2hwinCuDY5epVXnHnBFERAE6FWfjZRRRzUaCcD-eI4Ljl7074fcSC1-CsCaYK7BEOAlmVJ9p1YVqc9OBvfVQt9qX32SXQpIoO3ZE-I8KC6hHySA9Ltp3ZVxGCQyVw6zKtqw3raqSxtwrbc_A_XbHeqz3uSGhkmlzZE2TwmliuIzzZ-9QhYotWcXzTBk2KHGGsIxbzwZIubT8s2bR9PDrLjKApZLInfq9df2LxcHWGxoLQfNhMw6zLUeSQaIO1SzWShA_RMFmOaUIIToTNg8hrzSWHrAIkmQO_FXS6NFVkkw5QJeOysYxQEq0D3Drck3J3dps2JA
 
 # tools: — the group's own doors, for a person or an agent working here.
 tools:
-  group    = https://d8a.com/g/d8aaaa-batch_gpu
-  admin    = https://d8a.com/g/d8aaaa-batch_gpu?section=admin
-  items    = https://d8a.com/api/v1/store/items?group=d8aaaa-batch_gpu
+  group    = https://d8a.com/g/admin-batch_gpu
+  admin    = https://d8a.com/g/admin-batch_gpu?section=admin
+  items    = https://d8a.com/api/v1/store/items?group=admin-batch_gpu
   checkout = https://d8a.com/api/v1/store/checkout
-  verify   = https://d8a.com/api/v1/store/orders/ORDER?group=d8aaaa-batch_gpu
+  verify   = https://d8a.com/api/v1/store/orders/ORDER?group=admin-batch_gpu
 
 # payments: — the group's shop. Paste this block where it should appear on the
 # site; card payments land in the group's shared credit balance. Items and
@@ -21,54 +23,264 @@ tools:
 # buyer comes back with ?d8a_order=<id>; the block verifies it (tools: verify)
 # and fires the "group-store:paid" event — release the product there.
 payments:
-  <!-- Sell on your site: your items, a Buy button each. After a payment the buyer
+  <!-- Sell on your site: your items, a selector where one comes in sizes or
+       colours, and a CART — Add on every row, then one Checkout for the lot. The
+       basket rides in a pill stuck to the bottom of THIS box, never to your page:
+       its right half IS the Checkout, its left half opens an optional review
+       panel. A single-item shop keeps its single Buy button and no basket at all.
+       Paste ONE of these per page.
+       STYLING: every colour, radius and font is a CSS custom property with the old
+       literal as its fallback, and every node carries a gs-* class. Restyle it from
+       your own stylesheet — #group-store { --gs-accent:#111; --gs-radius:0 } — or
+       beat the block's own rules from an id: #group-store .gs-row { … }. On a DARK
+       site set the one thing a sticky control cannot guess:
+       #group-store { --gs-panel:#111827; --gs-hover:#1f2937 }. --gs-dock-bottom
+       lifts the bar off the viewport bottom; :auto makes it a plain bar again.
+       After a payment the buyer
        returns here with ?d8a_order=<id>; the widget verifies it with the platform and
-       fires "group-store:paid" (window.groupStorePaid) — release the product there. -->
+       fires "group-store:paid" (window.groupStorePaid) — release the product there.
+       The order id alone is a link anyone could forward, so an order also proves
+       WHO paid: set window.groupStoreBuyerEmail (ask the returning buyer, or read
+       your own session) before this block, or call
+       window.groupStoreVerify(id, email) yourself. The email is hashed here and
+       never sent.
+       YOUR OWN CART: window.groupStoreCheckout([{ item, quantity, variant }, …])
+       opens ONE checkout for everything a cart holds — item ids from the list this
+       block loads (or tools: items), one line per item and choice. Keep your own
+       product pages; this is the only call they need. To draw your own basket
+       count off THIS cart instead, read window.groupStoreCart.lines() and listen
+       for "group-store:cart" on document. A multi-item shop draws no per-row
+       quantity box — the basket owns quantity — so a page that scripted one calls
+       window.groupStoreCart.add({ item, quantity }) instead. -->
   <div id="group-store"></div>
+  <noscript><p><a href="https://d8a.com/pay/admin-batch_gpu">Shop</a></p></noscript>
+  <style>#group-store *{box-sizing:border-box}#group-store :focus-visible{outline:2px solid var(--gs-accent,#7c5cff);outline-offset:2px}#group-store{font:var(--gs-font,14px system-ui,sans-serif)}.gs-t{font:var(--gs-font-tiny,11px system-ui,sans-serif);color:var(--gs-faint,#9ca3af)}.gs-m{color:var(--gs-muted,#6b7280)}.gs-b{color:var(--gs-bad,#dc2626)}.gs-n{font-variant-numeric:tabular-nums}.gs-a{color:var(--gs-accent,#7c5cff)}.gs-r{margin-left:auto}.gs-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 0}.gs-row[data-sold]{opacity:.6}.gs-main{flex:1 1 11rem;min-width:0}.gs-name{font-weight:600}.gs-box{font:inherit;padding:5px 8px;width:76px;border-radius:var(--gs-radius,8px)}.gs-select{width:auto}.gs-opts{display:flex;flex-wrap:wrap;gap:6px}.gs-chip{font:var(--gs-font-small,13px system-ui,sans-serif);line-height:1;padding:7px 11px;cursor:pointer}.gs-chip[aria-pressed=true]{background:var(--gs-accent,#7c5cff);border-color:var(--gs-accent,#7c5cff);color:var(--gs-on-accent,#ffffff)}.gs-opts[data-need] .gs-chip{border-color:var(--gs-bad,#dc2626)}.gs-buy,.gs-checkout{font:inherit;cursor:pointer;text-decoration:none;white-space:nowrap;border:0;padding:9px 18px;background:var(--gs-accent,#7c5cff);color:var(--gs-on-accent,#ffffff)}.gs-buy{display:inline-block;padding:7px 16px}.gs-buy[hidden]{display:none}.gs-checkout{flex:none;min-width:8.5rem;font-weight:600}.gs-bar .gs-checkout{border-radius:0 var(--gs-button-radius,999px) var(--gs-button-radius,999px) 0}.gs-checkout[disabled]{opacity:.6;cursor:default}.gs-stepper{display:inline-flex;align-items:center;padding:2px}.gs-rowstep:empty{display:none}.gs-step{font:inherit;line-height:1;min-width:30px;padding:5px 0;cursor:pointer;border:0}.gs-step[disabled]{opacity:.35;cursor:default}.gs-qty{width:3ch;text-align:center;font:inherit;font-variant-numeric:tabular-nums;border:0}.gs-dock{position:sticky;bottom:var(--gs-dock-bottom,0px);z-index:1;display:flex;flex-direction:column-reverse;align-items:flex-end;margin-top:12px}.gs-bar,.gs-panel{width:min(100%,26rem);background:var(--gs-panel,#ffffff);border:1px solid var(--gs-line,#e5e7eb)}.gs-bar{display:flex;align-items:stretch;margin:8px 0}.gs-toggle{flex:1;display:flex;align-items:center;gap:8px;min-width:0;font:inherit;text-align:left;border:0;padding:10px 14px;cursor:pointer;border-radius:var(--gs-button-radius,999px) 0 0 var(--gs-button-radius,999px)}.gs-toggle:hover{background:var(--gs-hover,#f3f4f6)}.gs-count{flex:none;min-width:22px;padding:0 6px;text-align:center;line-height:20px;font:var(--gs-font-tiny,11px system-ui,sans-serif);background:var(--gs-accent,#7c5cff);color:var(--gs-on-accent,#ffffff)}.gs-count[data-bad]{background:var(--gs-bad,#dc2626)}.gs-sum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gs-caret{margin-left:auto;transition:transform .15s}[aria-expanded=true] .gs-caret{transform:rotate(180deg)}.gs-panel[hidden]{display:none}.gs-panel{max-height:min(70vh,520px);overflow:auto;border-radius:var(--gs-radius,8px);font:var(--gs-font-small,13px system-ui,sans-serif)}.gs-head,.gs-seller,.gs-cart-row,.gs-tot,.gs-foot{display:flex;align-items:center;gap:8px}.gs-head{padding:10px 12px 4px;font-weight:600}.gs-seller,.gs-why{padding:0 12px 9px}.gs-lines{max-height:min(32vh,220px);overflow:auto;padding:0 12px}.gs-cart-row{flex-wrap:wrap;padding:8px 0}.gs-cart-name{flex:1 1 7rem;min-width:0}.gs-line-total{min-width:68px;text-align:right}.gs-remove{font:inherit;border:0;padding:2px 4px;cursor:pointer;color:var(--gs-faint,#9ca3af)}.gs-sub{flex:1 0 100%}.gs-link{font:inherit;color:var(--gs-accent,#7c5cff);border:0;padding:0 0 0 4px;cursor:pointer;text-decoration:underline}.gs-sums{padding:9px 12px}.gs-tot{padding:2px 0}.gs-tot b{margin-left:auto;font-weight:inherit}.gs-big{font-weight:700}.gs-foot{padding:9px 12px 10px}.gs-foot .gs-checkout{flex:1;min-width:0}.gs-status{margin:6px 0 0;min-height:1.2em;font:var(--gs-font-small,13px system-ui,sans-serif);color:var(--gs-faint,#9ca3af)}.gs-status[data-bad]{color:var(--gs-bad,#dc2626)}[data-option-for][data-need]{border-color:var(--gs-bad,#dc2626)}.gs-row,.gs-lines,.gs-cart-row+.gs-cart-row,.gs-sums,.gs-foot{border-top:1px solid var(--gs-line,#e5e7eb)}.gs-buy,.gs-chip,.gs-bar,.gs-count,.gs-stepper,.gs-foot .gs-checkout{border-radius:var(--gs-button-radius,999px)}.gs-box,.gs-chip,.gs-stepper{border:1px solid var(--gs-field,#d1d5db)}.gs-box,.gs-chip,.gs-toggle,.gs-step,.gs-qty{background:none;color:inherit}.gs-remove,.gs-link{background:none}@media (max-width:520px){.gs-dock{align-items:stretch}.gs-main{flex-basis:100%}.gs-buy,.gs-stepper,.gs-rowstep{margin-left:auto}}@media (prefers-reduced-motion:reduce){.gs-caret{transition:none}}</style>
   <script>
   (function () {
     var BASE = "https://d8a.com";
-    var GROUP = "d8aaaa-batch_gpu";
+    var GROUP = "admin-batch_gpu";
     var esc = function (s) {
       return String(s).replace(/[&<>"']/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; });
     };
     var el = document.getElementById("group-store");
-    // The handshake: an order id is only proof once the platform says so.
-    var verify = function (id) {
-      return fetch(BASE + "/api/v1/store/orders/" + encodeURIComponent(id) + "?group=" + encodeURIComponent(GROUP))
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (d) { return d && d.paid ? d.order : null; })
-        .catch(function () { return null; });
+    // Hashed here, so the address never leaves the page. The split name is ON PURPOSE.
+    var sha256Hex = function (s) {
+      try {
+        var g = window, k = "cr" + "ypto";
+        var c = g[k] && g[k].subtle;
+        if (!c) return Promise.resolve("");
+        return c.digest("SHA-256", new TextEncoder().encode(String(s).trim().toLowerCase())).then(function (b) {
+          return Array.prototype.map.call(new Uint8Array(b), function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+        });
+      } catch (e) { return Promise.resolve(""); }
+    };
+    var bearer = function () {
+      try { var l = window.d8aLogin; return l && l.bearer ? { Authorization: "Bearer " + String(l.bearer) } : {}; } catch (e) { return {}; }
+    };
+    var verify = function (id, email) {
+      return (email ? sha256Hex(email) : Promise.resolve("")).then(function (h) {
+        return fetch(BASE + "/api/v1/store/orders/" + encodeURIComponent(id) + "?group=" + encodeURIComponent(GROUP) + (h ? "&buyer=" + h : ""), { headers: bearer() })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { return d && d.paid ? d.order : null; })
+          .catch(function () { return null; });
+      });
     };
     window.groupStoreVerify = verify;
+    var here = function () { return location.href.replace(/([?&])d8a_order=[^&#]*&?/, "$1").replace(/[?&](#|$)/, "$1"); };
+    var checkout = function (lines, opts) {
+      opts = opts || {};
+      var headers = bearer(); headers["Content-Type"] = "application/json";
+      return fetch(BASE + "/api/v1/store/checkout", { method: "POST", headers: headers,
+        body: JSON.stringify({ group: GROUP, lines: lines, returnUrl: opts.returnUrl || here() }) })
+        .then(function (r) { return r.json().then(function (d) { if (!r.ok || !d.url) throw new Error(d.error || "Checkout failed"); return d; }); })
+        .then(function (d) { if (opts.navigate !== false) location.href = d.url; return d; });
+    };
+    window.groupStoreCheckout = checkout;
+    var CART_KEY = "d8a-cart:" + GROUP;
+    var cart = [];
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(CART_KEY) || "[]");
+      if (Object.prototype.toString.call(saved) === "[object Array]") {
+        cart = saved.filter(function (l) { return l && typeof l.item === "string" && l.quantity > 0; });
+      }
+    } catch (e) { cart = []; }
+    var cartChanged = function () {
+      try { window.localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* memory only */ }
+      try { document.dispatchEvent(new CustomEvent("group-store:cart", { detail: { lines: cart.slice(0) } })); } catch (e) {}
+      if (window.groupStoreRenderCart) window.groupStoreRenderCart();
+    };
+    var clearCart = function () {
+      cart = [];
+      try { window.localStorage.removeItem(CART_KEY); } catch (e) {}
+      cartChanged();
+    };
+    // One line per item AND choice; a second Add of the same pair adds quantity.
+    var addToCart = function (line) {
+      for (var i = 0; i < cart.length; i++) {
+        if (cart[i].item === line.item && (cart[i].variant || "") === (line.variant || "")) {
+          cart[i].quantity = Math.min(100, cart[i].quantity + line.quantity);
+          if (line.amountCents) cart[i].amountCents = line.amountCents;
+          cartChanged();
+          return true;
+        }
+      }
+      if (cart.length >= 20) return false;   // STORE_MAX_LINES: the checkout refuses more
+      cart.push(line);
+      cartChanged();
+      return true;
+    };
+    window.groupStoreCart = {
+      lines: function () { return cart.slice(0); },
+      add: function (line) { return addToCart({ item: String(line.item), quantity: Math.max(1, Math.min(100, Math.round(line.quantity || 1))), variant: line.variant || "", amountCents: line.amountCents || undefined }); },
+      clear: clearCart,
+      checkout: function (opts) { return checkout(cart.slice(0), opts); }
+    };
     var back = (location.search.match(/[?&]d8a_order=([A-Za-z0-9_-]+)/) || [])[1];
-    if (back) verify(back).then(function (o) {
+    if (back) verify(back, window.groupStoreBuyerEmail).then(function (o) {
       if (!o) return;
       window.groupStorePaid = o;
+      clearCart();   // it is bought: the basket that opened this checkout is spent
       if (el && el.parentNode) {
         var p = document.createElement("p");
         p.setAttribute("data-paid", o.id);
-        p.style.cssText = "font:13px system-ui,sans-serif;color:#059669";
-        p.innerHTML = "Paid: " + esc(o.itemName) + (o.quantity > 1 ? " \u00d7" + o.quantity : "") + " \u2014 order " + esc(o.id);
+        p.style.cssText = "font:var(--gs-font-small,13px system-ui,sans-serif);color:var(--gs-good,#059669)";
+        // One line for the whole order — a cart reads "Everyday Tee (M) + 2 more".
+        p.innerHTML = "Paid: " + esc(o.summary || (o.itemName + (o.quantity > 1 ? " \u00d7" + o.quantity : ""))) + " \u2014 order " + esc(o.id);
         el.parentNode.insertBefore(p, el);
       }
       document.dispatchEvent(new CustomEvent("group-store:paid", { detail: o }));
     });
     if (!el) return;
-    // The list. What is on sale is read from the platform (s) and kept here so
-    // the Buy handler below, wired once, always sees the latest load.
-    var store = null;
-    // One place that draws the failure line, so the timeout and the .catch at
-    // the end show exactly the same thing. Try again re-runs the load in place.
+    var store = null;   // what is on sale, so the handler below sees the latest load
+    var amending = -1;   // which line has its named amount open for editing
+    var money = function (c) { return "$" + (Math.max(0, Math.round(c)) / 100).toFixed(2); };
+    var itemById = function (id) {
+      var xs = (store && store.items) || [];
+      for (var i = 0; i < xs.length; i++) { if (xs[i].id === id) return xs[i]; }
+      return null;
+    };
+    // What one line may hold: the seller's stock, else the cap the route enforces.
+    var capOf = function (it) { return (it && typeof it.stock === "number" && it.stock > 0) ? Math.min(100, it.stock) : 100; };
+    var status = function (msg, bad) {
+      var p = el.querySelector("[data-cart-status]");
+      if (!p) return;
+      p.textContent = msg || "";
+      if (bad) p.setAttribute("data-bad", "1"); else p.removeAttribute("data-bad");
+      if (bad && msg && p.scrollIntoView) p.scrollIntoView({ block: "nearest" });
+    };
+    // Written once: a host page may paste this inside a form of its own, where a
+    // button with no type submits it. Every button below opens with these bytes.
+    var BTN = '<button type="button" class="gs-';
     var loadFailed = function () {
-      el.innerHTML = '<p role="status" style="font:13px system-ui,sans-serif;color:#9ca3af">The shop could not be reached. <button type="button" data-store-retry style="font:inherit;color:#7c5cff;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline">Try again</button></p>';
+      el.innerHTML = '<p role="status" class="gs-error gs-t">The shop could not be reached. ' + BTN + 'retry gs-link" data-store-retry>Try again</button></p>';
       var retry = el.querySelector("[data-store-retry]");
       if (retry) retry.addEventListener("click", function () { load(); });
     };
+    var openPanel = function (want) {
+      var tog = el.querySelector("[data-cart-toggle]"), pan = el.querySelector("[data-cart-panel]");
+      if (!tog || !pan) return;
+      tog.setAttribute("aria-expanded", want ? "true" : "false");
+      if (want) pan.removeAttribute("hidden"); else pan.setAttribute("hidden", "hidden");
+    };
+    // One shape, twice: panel (typable) and row. Both carry the cart INDEX.
+    var stepper = function (at, qty, cap, typable, name) {
+      return '<span class="gs-stepper">' + BTN + 'step" data-dec="' + at + '" aria-label="One fewer">\u2212</button>' +
+        (typable ? '<input class="gs-qty" data-cart-qty="' + at + '" type="text" inputmode="numeric" value="' + qty + '" aria-label="Quantity of ' + name + '">' : '<span class="gs-qty">' + qty + '</span>') +
+        BTN + 'step" data-inc="' + at + '"' + (qty >= cap ? ' disabled title="Only ' + cap + ' left"' : '') + ' aria-label="One more">+</button></span>';
+    };
+    // A rewritten or hidden control cannot keep focus: name it, stand there again.
+    var FK = ["data-inc", "data-dec", "data-del", "data-cart-qty"];
+    var keyOf = function (f) {
+      for (var i = 0; i < 4; i++) { var v = f && f.getAttribute && f.getAttribute(FK[i]); if (v != null) return "[" + FK[i] + '="' + v + '"]'; }
+      return "";
+    };
+    var refocus = function (r, k) { var f = k && r.querySelector(k); if (f && f.disabled) f = f.parentNode.querySelector("[data-dec]"); if (f) f.focus(); };
+    // The Add, and the amount box beside it, are hidden for that line's stepper.
+    var renderRowState = function () {
+      var as = el.querySelectorAll("a[data-item]");
+      for (var i = 0; i < as.length; i++) {
+        var a = as[i], id = a.getAttribute("data-item");
+        var slot = el.querySelector('[data-rowstep-for="' + id + '"]');
+        if (!slot) continue;
+        var ab = el.querySelector('[data-amount-for="' + id + '"]');
+        var sel = el.querySelector('[data-option-for="' + id + '"]');
+        var v = sel ? sel.value : (a.getAttribute("data-variant") || "");
+        var at = -1;
+        for (var j = 0; j < cart.length; j++) { if (cart[j].item === id && (cart[j].variant || "") === v) { at = j; break; } }
+        var act = document.activeElement, held = slot.contains(act), h = at < 0 ? "removeAttribute" : "setAttribute";
+        a[h]("hidden", "hidden");
+        if (ab) ab[h]("hidden", "hidden");
+        if (at < 0) { slot.innerHTML = ""; if (held) a.focus(); continue; }
+        var k = act === a ? '[data-inc="' + at + '"]' : (held ? keyOf(act) : "");
+        slot.innerHTML = stepper(at, cart[at].quantity, capOf(itemById(id)), false, "");
+        refocus(slot, k);
+      }
+    };
+    // Redrawn whole, so the button indices are the ones on screen.
+    var renderCart = function () {
+      var box = el.querySelector("[data-cart]");
+      if (!box) return;
+      var s = store;
+      // A one-item shop draws no dock; its stored lines are unseen, NOT deleted.
+      if (!s || !s.items || s.items.length < 2 || !cart.length) { box.innerHTML = ""; renderRowState(); return; }
+      var prev = box.querySelector("[data-cart-toggle]");
+      var wasOpen = !!(prev && prev.getAttribute("aria-expanded") === "true");
+      var ae = document.activeElement, fk = box.contains(ae) ? keyOf(ae) : "";
+      var total = 0, units = 0, needsFix = false;
+      var rows = cart.map(function (l, i) {
+        var it = itemById(l.item);
+        var unit = l.amountCents || (it ? it.priceCents : 0);
+        // Inherited from an earlier visit: over the stock, or under the floor.
+        var over = (it && typeof it.stock === "number" && it.stock > 0 && l.quantity > it.stock) ? it.stock : 0;
+        var under = it && it.payWhatYouWant && unit < it.priceCents;
+        if (over || under) needsFix = true;
+        total += unit * l.quantity;
+        units += l.quantity;
+        var nm = esc(it ? it.name : l.item), sub = "";
+        if (over) sub = '<span class="gs-sub gs-t gs-b">Only ' + over + ' left \u2014 you asked for ' + l.quantity + ' \u00b7 ' + BTN + 'link" data-clamp="' + i + '">use ' + over + '</button></span>';
+        else if (it && it.payWhatYouWant) sub = amending === i
+          ? '<span class="gs-sub gs-t"><input class="gs-box gs-n" data-amend-for="' + i + '" type="text" inputmode="decimal" value="' + (Math.max(0, Math.round(unit)) / 100).toFixed(2) + '" aria-label="Amount for ' + nm + '"></span>'
+          : '<span class="gs-sub gs-t' + (under ? ' gs-b' : '') + '">You named ' + money(unit) + (under ? ' \u2014' : ' \u00b7') + ' minimum ' + money(it.priceCents) + ' \u00b7 ' + BTN + 'link" data-' + (under ? 'floor' : 'amend') + '="' + i + '">' + (under ? 'use ' + money(it.priceCents) : 'change') + '</button></span>';
+        else if (l.quantity > 1) sub = '<span class="gs-sub gs-t">' + money(unit) + ' each</span>';
+        return '<div class="gs-cart-row"><span class="gs-cart-name">' + nm + (l.variant ? ' <span class="gs-m">(' + esc(l.variant) + ')</span>' : '') + '</span>' +
+          stepper(i, l.quantity, capOf(it), true, nm) +
+          '<span class="gs-line-total gs-n">' + money(unit * l.quantity) + '</span>' +
+          BTN + 'remove" data-del="' + i + '" aria-label="Remove">\u00d7</button>' + sub + '</div>';
+      }).join("");
+      var ck = s.checkout || {}, off = ck.enabled === false, ship = !!ck.shipping, promo = !!ck.promoCodes;
+      var g = s.group || {};
+      var gn = '<b>' + esc(g.name || "") + '</b>';
+      var seller = 'Sold by ' + (g.url ? '<a class="gs-a" href="' + esc(g.url) + '">' + gn + '</a>' : gn);
+      // The second sentence is only honest because checkout() sends a returnUrl.
+      var signedIn = false;
+      try { signedIn = !!bearer().Authorization; } catch (e) {}
+      var why = (signedIn ? "Paying as your signed-in account \u2014 this order shows under your purchases."
+        : "You&#39;ll enter your email at the card checkout \u2014 it&#39;s what proves the receipt is yours.") +
+        " After paying you come back here and this basket empties.";
+      // The resting button IS the checkout, until the line it would send is doomed.
+      var barBtn = BTN + 'checkout" data-checkout' + (needsFix ? ' data-fix' : (off ? ' disabled' : '')) + '>' + (needsFix ? "Fix" : (off ? "Payments not set up" : "Checkout")) + '</button>';
+      var footBtn = BTN + 'checkout" data-checkout' + (needsFix || off ? ' disabled' : '') + '>' + (needsFix ? "Fix the line above" : (off ? "Payments not set up" : "Checkout \u00b7 " + money(total))) + '</button>';
+      box.innerHTML = '<div class="gs-bar">' + BTN + 'toggle" data-cart-toggle aria-expanded="false">' +
+        '<span class="gs-count"' + (needsFix ? ' data-bad' : '') + '>' + units + '</span>' +
+        '<span class="gs-sum">Basket \u00b7 ' + money(total) + '</span>' +
+        '<span class="gs-caret" aria-hidden="true">\u25b4</span></button>' + barBtn + '</div>' +
+        '<div class="gs-panel" role="region" aria-label="Basket" data-cart-panel hidden>' +
+        '<div class="gs-head">Basket<span class="gs-r gs-t">' + cart.length + ' of 20 things</span></div>' +
+        '<div class="gs-seller gs-m"><span>' + seller + '</span><span class="gs-r gs-t">Paid by card</span></div>' +
+        '<div class="gs-lines">' + rows + '</div><div class="gs-sums">' +
+        (ship ? '<div class="gs-tot"><span>Subtotal</span><b class="gs-n">' + money(total) + '</b></div><div class="gs-tot gs-m"><span>Shipping</span><b>Address collected at checkout</b></div>' : '') +
+        (promo ? '<div class="gs-tot gs-m"><span>Promo code</span><b>Enter it at the card checkout</b></div>' : '') +
+        '<div class="gs-tot gs-big"><span>Total today</span><b class="gs-n">' + money(total) + (ship ? ' + shipping' : '') + '</b></div></div>' +
+        '<div class="gs-why gs-t">' + why + '</div>' +
+        '<div class="gs-foot">' + footBtn + BTN + 'clear gs-link gs-t" data-clear>Empty basket</button></div></div>';
+      if (wasOpen) openPanel(true);   // an open panel survives a step or a remove
+      renderRowState();
+      refocus(box, fk);   // the + you just pressed is a new node; stand there again
+    };
+    window.groupStoreRenderCart = renderCart;
     var load = function () {
-      el.innerHTML = '<p role="status" style="font:13px system-ui,sans-serif;color:#9ca3af">Loading what\'s on sale\u2026</p>';
-      // A request that never answers (captive wifi, a stalled proxy) never
-      // rejects, so without this the box would sit on the loading line for ever.
+      el.innerHTML = '<p role="status" class="gs-loading gs-t">Loading what&#39;s on sale\u2026</p>';
+      // A request that never answers never rejects; without this it loads for ever.
       var done = false, timedOut = false;
       var ctrl = window.AbortController ? new AbortController() : null;
       var timer = setTimeout(function () {
@@ -89,14 +301,51 @@ payments:
           if (!s) return;
           if (!s.items) throw new Error("bad payload");
           store = s;
-          if (!s.items.length) { el.innerHTML = '<p style="font:13px system-ui,sans-serif;color:#9ca3af">Nothing for sale right now.</p>'; return; }
+          var ck = s.checkout || {};
+          if (!s.items.length) { el.innerHTML = '<p class="gs-empty gs-t">Nothing for sale right now.</p>'; return; }
+          // More than one thing to buy = a basket is worth it; one thing is not.
+          var multi = s.items.length > 1;
           el.innerHTML = s.items.map(function (it) {
-            return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #e5e7eb;font:14px system-ui,sans-serif">' +
-              '<div style="flex:1"><b>' + esc(it.name) + '</b>' +
-              (it.description ? '<div style="font-size:12px;color:#6b7280">' + esc(it.description) + '</div>' : '') + '</div>' +
-              '<span>' + esc(it.price) + '</span>' +
-              '<a href="' + esc(it.payUrl) + '" data-item="' + esc(it.id) + '" style="background:#7c5cff;color:#fff;border-radius:999px;padding:6px 14px;text-decoration:none">Buy</a></div>';
-          }).join("") + '<p style="font:11px system-ui,sans-serif;color:#9ca3af">Sold by <a href="' + esc(s.group.url) + '" style="color:#7c5cff">' + esc(s.group.name) + '</a></p>';
+            // Sold out gets no Buy; a cap prints "3 left"; PWYW prefills its box.
+            var sold = it.soldOut === true, iid = esc(it.id), nm = esc(it.name);
+            var left = (typeof it.stock === "number" && it.stock > 0) ? '<span class="gs-left gs-t gs-m">' + it.stock + ' left</span>' : '';
+            var priceText = esc(it.price) + (it.payWhatYouWant ? '+' : '');
+            var amountBox = it.payWhatYouWant && !sold
+              ? '<input type="number" class="gs-box gs-n" data-amount-for="' + iid + '" min="' + (it.priceCents / 100) + '" step="0.01" value="' + (it.priceCents / 100).toFixed(2) + '" onfocus="this.select()" aria-label="Amount for ' + nm + '">'
+              : '';
+            var options = '';
+            if (Array.isArray(it.options) && it.options.length && !sold) {
+              options = (it.options.length <= 6 && it.options.join("").length <= 40)
+                ? '<span class="gs-opts" role="group" aria-label="Choose one for ' + nm + '" data-opts-for="' + iid + '">' + it.options.map(function (o) { return BTN + 'chip" data-chip="' + iid + '" data-value="' + esc(o) + '" aria-pressed="false">' + esc(o) + '</button>'; }).join("") + '</span>'
+                : '<select data-option-for="' + iid + '" aria-label="Choose one for ' + nm + '" class="gs-box gs-select"><option value="">Choose\u2026</option>' + it.options.map(function (o) { return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join("") + '</select>';
+            }
+            var qty = (sold || multi) ? '' : '<input type="number" class="gs-box gs-n" data-qty-for="' + iid + '" min="1" max="' + capOf(it) + '" value="1" aria-label="Quantity of ' + nm + '">';
+            // The same <a> in both modes: no-script href, data-variant hook, and
+            // data-add is what routes it into the basket.
+            var action = sold
+              ? '<span class="gs-soldout gs-t">Sold out</span>'
+              : '<a href="' + esc(it.payUrl) + '" data-item="' + iid + '"' + (multi ? ' data-add="1"' : '') + ' class="gs-buy">' + (multi ? 'Add' : 'Buy') + '</a>' +
+                (multi ? '<span class="gs-rowstep" data-rowstep-for="' + iid + '"></span>' : '');
+            return '<div class="gs-row"' + (sold ? ' data-sold' : '') + '>' +
+              '<div class="gs-main"><b class="gs-name">' + nm + '</b>' +
+              (it.description ? '<div class="gs-desc gs-t">' + esc(it.description) + '</div>' : '') + '</div>' +
+              left + options + qty + amountBox +
+              '<span class="gs-price">' + priceText + '</span>' + action + '</div>';
+          }).join("") +
+            '<div class="gs-dock" data-cart></div>' +
+            '<p class="gs-status" data-cart-status role="status"></p>' +
+            '<p class="gs-note gs-t">Sold by <a class="gs-a" href="' + esc(s.group.url) + '">' + esc(s.group.name) + '</a>' +
+            (!multi && ck.shipping ? ' \u00b7 Shipping address collected at checkout' : '') +
+            (!multi && ck.promoCodes ? ' \u00b7 Have a promo code? Enter it at checkout' : '') + '</p>';
+          // A stored basket can name an item the shop has withdrawn: drop, say so.
+          var before = cart.length, gone = [];
+          cart = cart.filter(function (l) {
+            var it = itemById(l.item);
+            if (!it || it.soldOut === true) { gone.push(it ? it.name : l.item); return false; }
+            return true;
+          });
+          if (gone.length) status("Sold out and removed: " + gone.join(", ") + ".", true);
+          if (cart.length !== before) cartChanged(); else renderCart();
         })
         .catch(function () {
           clearTimeout(timer);
@@ -104,29 +353,172 @@ payments:
         });
     };
     el.addEventListener("click", function (e) {
-      var a = e.target && e.target.closest ? e.target.closest("a[data-item]") : null;
+      var t = e.target;
+      var near = function (q) { return t && t.closest ? t.closest(q) : null; };
+      var tog = near("[data-cart-toggle]");
+      if (tog) { openPanel(tog.getAttribute("aria-expanded") !== "true"); return; }
+      var btn = near("button[data-inc],button[data-dec],button[data-del],button[data-checkout]");
+      if (btn) {
+        var inc = btn.getAttribute("data-inc"), dec = btn.getAttribute("data-dec"), del = btn.getAttribute("data-del");
+        if (del !== null) { cart.splice(Number(del), 1); cartChanged(); return; }
+        if (inc !== null || dec !== null) {
+          var at = Number(inc !== null ? inc : dec);
+          var line = cart[at];
+          if (!line) return;
+          // One fewer than one is no line at all — the same thing the \u00d7 does.
+          if (inc === null && line.quantity <= 1) { cart.splice(at, 1); cartChanged(); return; }
+          var cap = capOf(itemById(line.item));
+          line.quantity = Math.max(1, Math.min(cap, line.quantity + (inc !== null ? 1 : -1)));
+          cartChanged();
+          return;
+        }
+        if (btn.getAttribute("data-fix") !== null) { openPanel(true); return; }
+        status("");
+        var all = el.querySelectorAll("[data-checkout]");
+        for (var k = 0; k < all.length; k++) all[k].disabled = true;
+        btn.textContent = "Opening\u2026";
+        checkout(cart.slice(0)).catch(function (err) {
+          renderCart();
+          // The platform's own words, so the buyer is told what to change.
+          status((err && err.message) || "Checkout failed", true);
+        });
+        return;
+      }
+      // A chip only selects.
+      var chip = near(".gs-chip");
+      if (chip) {
+        var grp = chip.parentNode, cs = grp.querySelectorAll(".gs-chip");
+        for (var ci = 0; ci < cs.length; ci++) cs[ci].setAttribute("aria-pressed", cs[ci] === chip ? "true" : "false");
+        grp.removeAttribute("data-need");
+        var link = el.querySelector('a[data-item="' + chip.getAttribute("data-chip") + '"]');
+        if (link) link.setAttribute("data-variant", chip.getAttribute("data-value"));
+        renderRowState();
+        return;
+      }
+      var edit = near("[data-clamp],[data-floor],[data-amend],[data-clear]");
+      if (edit) {
+        if (edit.getAttribute("data-clear") !== null) { clearCart(); status("Basket emptied."); return; }
+        var cl = edit.getAttribute("data-clamp"), fl = edit.getAttribute("data-floor");
+        var ln = cart[Number(cl !== null ? cl : (fl !== null ? fl : edit.getAttribute("data-amend")))];
+        if (!ln) return;
+        if (cl !== null) { ln.quantity = Math.max(1, capOf(itemById(ln.item))); cartChanged(); return; }
+        if (fl !== null) { var itf = itemById(ln.item); if (itf) ln.amountCents = itf.priceCents; cartChanged(); return; }
+        amending = Number(edit.getAttribute("data-amend"));
+        renderCart();
+        var open = el.querySelector("[data-amend-for]");
+        if (open) open.focus();
+        return;
+      }
+      var a = near("a[data-item]");
       var s = store;
       if (!a || !s || !s.checkout.enabled) return;
       e.preventDefault();
+      var itemId = a.getAttribute("data-item");
+      // WHICH ONE: the selector, else the pressed chip or your own data-variant.
+      var sel = el.querySelector('[data-option-for="' + itemId + '"]');
+      var variant = sel ? sel.value : (a.getAttribute("data-variant") || "");
+      if (sel && !variant) { sel.focus(); sel.setAttribute("data-need", "1"); setTimeout(function () { sel.removeAttribute("data-need"); }, 1200); return; }
+      var opts = el.querySelector('[data-opts-for="' + itemId + '"]');
+      if (opts && !variant) {
+        opts.setAttribute("data-need", "1");
+        var first = opts.querySelector(".gs-chip");
+        if (first) first.focus();
+        setTimeout(function () { opts.removeAttribute("data-need"); }, 1200);
+        return;
+      }
+      var qtyBox = el.querySelector('[data-qty-for="' + itemId + '"]');
+      var quantity = qtyBox ? Math.max(1, Math.min(100, Math.round(parseFloat(qtyBox.value) || 1))) : 1;
+      // The amount the buyer named, in cents; only sent when there is a box. It
+      // is NOT raised to the minimum here — the basket says so instead.
+      var box = el.querySelector('[data-amount-for="' + itemId + '"]');
+      var amountCents = box && box.value ? Math.round(parseFloat(box.value) * 100) : null;
+      // ADD: one unit, the page stays put, the row's Add becomes its stepper.
+      if (a.getAttribute("data-add")) {
+        var added = addToCart({ item: itemId, quantity: 1, variant: variant, amountCents: (amountCents && amountCents > 0) ? amountCents : undefined });
+        var itn = itemById(itemId);
+        status(added ? ((itn ? itn.name : itemId) + (variant ? " (" + variant + ")" : "") + " added.")
+          : "That is as many different things as one order can hold.", !added);
+        return;
+      }
       a.textContent = "Opening\u2026";
-      // Come back to this page — minus any earlier receipt on the URL.
-      var here = location.href.replace(/([?&])d8a_order=[^&#]*&?/, "$1").replace(/[?&](#|$)/, "$1");
-      fetch(s.checkout.url, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: GROUP, item: a.getAttribute("data-item"), quantity: 1, returnUrl: here }) })
+      var headers = bearer(); headers["Content-Type"] = "application/json";
+      fetch(s.checkout.url, { method: "POST", headers: headers,
+        body: JSON.stringify({ group: GROUP, item: itemId, quantity: quantity, variant: variant, returnUrl: here(),
+          amountCents: (amountCents && amountCents > 0) ? amountCents : undefined }) })
         .then(function (r) { return r.json(); })
         .then(function (d) { if (d.url) { location.href = d.url; } else { a.textContent = "Buy"; location.href = a.href; } })
         .catch(function () { location.href = a.href; });
+    });
+    // Bound to the widget's box, NEVER document, and only when the panel is open.
+    el.addEventListener("keydown", function (e) {
+      var t = e.target, k = e.key;
+      if (k === "Enter" && t && t.getAttribute && (t.getAttribute("data-cart-qty") !== null || t.getAttribute("data-amend-for") !== null)) { e.preventDefault(); t.blur(); return; }
+      if (k !== "Escape") return;
+      var tog = el.querySelector("[data-cart-toggle]");
+      if (!tog || tog.getAttribute("aria-expanded") !== "true") return;
+      openPanel(false);
+      tog.focus();
+    });
+    // The prefilled minimum is selected on touch, even where onfocus is blocked.
+    el.addEventListener("focusin", function (e) {
+      var t = e.target;
+      if (t && t.getAttribute && t.getAttribute("data-amount-for") !== null && t.select) { try { t.select(); } catch (err) {} }
+    });
+    // The ONE typable field, and a named amount: raw text, clamped on blur/Enter.
+    el.addEventListener("change", function (e) {
+      var t = e.target;
+      if (!t || !t.getAttribute) return;
+      // A different choice is a different line, so the row goes back to Add.
+      if (t.getAttribute("data-option-for") !== null) { renderRowState(); return; }
+      var q = t.getAttribute("data-cart-qty");
+      if (q !== null) {
+        var lq = cart[Number(q)];
+        if (!lq) return;
+        // The commit rule, written to match the React cart case for case: the two
+        // share ONE basket (the same storage key), so a rule that differs between
+        // them is a real divergence, not a cosmetic one. Blank or non-numeric
+        // leaves the stored quantity alone and puts it back in the box - Number,
+        // not parseFloat, so "12abc" reads as a typo rather than as twelve. Below
+        // one is not a line at all, which is what the minus at one already does.
+        var raw = String(t.value).trim();
+        var n = raw ? Math.round(Number(raw)) : NaN;
+        if (!isFinite(n)) { t.value = lq.quantity; return; }
+        if (n < 1) { cart.splice(Number(q), 1); cartChanged(); return; }
+        lq.quantity = Math.min(capOf(itemById(lq.item)), n);
+        cartChanged();
+        return;
+      }
+      var m = t.getAttribute("data-amend-for");
+      if (m !== null) {
+        var lm = cart[Number(m)];
+        if (!lm) return;
+        var itm = itemById(lm.item);
+        var c = Math.round(parseFloat(t.value) * 100);
+        lm.amountCents = c > 0 ? c : (itm ? itm.priceCents : 1);
+        amending = -1;
+        cartChanged();
+      }
     });
     load();
   })();
   </script>
 
-# keys: — setting NAMES this project reads from the environment. Values are set
-# on the Admin tab and live on the box, never here.
+# items: — what the group sells, and the ONE generated section a passed Code
+# proposal MAY edit: THIS is where they are set. The platform reads the block
+# after every merge (tools: items is the live copy) and the Admin tab shows
+# them read-only. Name = $price — one line | S, M, L (the choices a buyer
+# picks one of, optional); one per line, up to 50.
+# An empty block means nothing is for sale.
+items:
+
+# keys: — the settings this project needs. NAMES ONLY: every value lives on
+# the group's server and is never written into this file. Run the project
+# with `d8a run -- <command>` to get them, and `d8a check` to see which are
+# missing. Set them on the group's Admin tab.
 keys:
   HOST_TTL_SECONDS
-  MAX_REQUEST_SIZE_BYTES
   MAX_HOSTS
+  MAX_REQUEST_SIZE_BYTES
 
 # Where this repository runs live, if anywhere — the footer shows it as a globe.
 # url: https://example.com
