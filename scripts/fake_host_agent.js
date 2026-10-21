@@ -23,7 +23,15 @@ function required(name) {
 const schedulerUrl = required('SCHEDULER_URL').replace(/\/+$/, '');
 const hostId = required('HOST_ID');
 const token = required('HOST_TOKEN');
-const intervalMs = Number(process.env.REPORT_INTERVAL_SECONDS || 30) * 1000;
+const intervalSeconds = Number(process.env.REPORT_INTERVAL_SECONDS || 30);
+// setInterval() runs a 0, negative, NaN or over-2^31-1 ms delay every 1 ms,
+// which would flood the scheduler with reports.
+const MAX_INTERVAL_SECONDS = Math.floor(2147483647 / 1000);
+if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0 || intervalSeconds > MAX_INTERVAL_SECONDS) {
+  console.error(`fake-host: REPORT_INTERVAL_SECONDS must be a positive number of seconds, at most ${MAX_INTERVAL_SECONDS}, not "${process.env.REPORT_INTERVAL_SECONDS}"`);
+  process.exit(1);
+}
+const intervalMs = intervalSeconds * 1000;
 const headers = {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`};
 
 function hostReport() {
