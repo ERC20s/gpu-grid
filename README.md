@@ -167,9 +167,11 @@ undefined, the filter is empty and every live host "matches" - that was the old 
 A job file that already has a top-level "job" key is posted as it stands, and its
 optional "hosts" array is passed through (POST /match then matches that list instead
 of the live registry). A job file that is not a JSON object (a list, a string, a
-number, null), or whose "job" key is not an object, is refused before anything is
-posted: gridctl prints "Invalid job file" and exits 2. It used to post {"job": {}} in
-that case, which has no filter and so matched every live host.
+number, null), whose "job" key is not an object, or whose "hosts" key is not a list,
+is refused before anything is posted: gridctl prints "Invalid job file" and exits 2.
+It used to post {"job": {}} in the first two cases, which has no filter and so matched
+every live host, and to drop a "hosts" that was not a list, which matched the live
+registry instead of the hosts the file named.
 
 The reply {"matches": [...]} is printed best host first and the CLI exits 0:
 

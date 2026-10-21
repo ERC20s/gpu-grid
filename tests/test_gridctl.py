@@ -209,3 +209,40 @@ def test_gridctl_rejects_malformed_job_file_without_posting(matchserver, tmp_pat
     assert 'Invalid job file' in proc.stderr, proc.stderr
     assert 'matched' not in proc.stdout, proc.stdout
     assert MatchHandler.posts == posts_before, 'nothing was posted to the scheduler'
+
+
+# A "hosts" value that is not a list must not be dropped either: without it the
+# scheduler matches the job against its whole live registry instead of the
+# candidates the file named. The scheduler answers 400 for such a payload, so
+# gridctl refuses it rather than quietly posting a different one.
+MALFORMED_HOSTS_DOCUMENTS = [
+    ('hosts an object', '{"job": {}, "hosts": {"id": "h", "model": "A100", "vram_mb": 1, "timestamp": 1}}'),
+    ('hosts null', '{"job": {"max_util_pct": 10}, "hosts": null}'),
+    ('hosts a string in a bare job spec', '{"required_min_vram_mb": 1, "hosts": "h"}'),
+]
+
+
+@pytest.mark.parametrize('what,text', MALFORMED_HOSTS_DOCUMENTS, ids=[w for w, _ in MALFORMED_HOSTS_DOCUMENTS])
+def test_build_payload_refuses_hosts_that_are_not_a_list(what, text):
+    with pytest.raises(ValueError) as excinfo:
+        build_payload(json.loads(text))
+    assert '"hosts" must be a JSON array' in str(excinfo.value)
+
+
+def test_build_payload_passes_hosts_list_through_from_a_bare_job_spec():
+    hosts = [{'id': 'h', 'model': 'A100', 'vram_mb': 1, 'timestamp': 1}]
+    assert build_payload({'required_min_vram_mb': 1, 'hosts': hosts})['hosts'] == hosts
+
+
+@pytest.mark.parametrize('what,text', MALFORMED_HOSTS_DOCUMENTS, ids=[w for w, _ in MALFORMED_HOSTS_DOCUMENTS])
+def test_gridctl_rejects_malformed_hosts_without_posting(matchserver, tmp_path, what, text):
+    job_file = tmp_path / 'job.json'
+    job_file.write_text(text)
+    posts_before = MatchHandler.posts
+    proc = subprocess.run(
+        [sys.executable, SCRIPT, '--scheduler-url', matchserver, '--job-file', str(job_file)],
+        capture_output=True, text=True, timeout=10)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert 'Invalid job file' in proc.stderr, proc.stderr
+    assert 'matched' not in proc.stdout, proc.stdout
+    assert MatchHandler.posts == posts_before, 'nothing was posted to the scheduler'

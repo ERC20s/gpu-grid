@@ -55,6 +55,7 @@ async function runTests() {
   assert(p2.error === 'registry_full', 'batch error code should be registry_full');
 
   await testExpiredHostsDoNotHoldASlot(port);
+  await testHeartbeatUnderTheCapDoesNotWalkTheRegistry(port);
 
   // Cleanup
   server.hostRegistry.clear();
@@ -91,6 +92,44 @@ async function testExpiredHostsDoNotHoldASlot(port) {
   res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'cap-extra', model: 'A100', vram_mb: 40960, timestamp: 1620000003}));
   assert.strictEqual(res.statusCode, 507, 'a second live host is still over the cap');
   assert.strictEqual(JSON.parse(res.body).error, 'registry_full');
+}
+
+// Eviction is only needed to make room. Walking the whole registry on every
+// report made each heartbeat O(registry size) as soon as MAX_HOSTS was set
+// (about 10x slower per report at 100k hosts), and dropped a stale host that
+// GET /hosts/:id should still report as stale while the cap had room to spare.
+async function testHeartbeatUnderTheCapDoesNotWalkTheRegistry(port) {
+  server.hostRegistry.clear();
+  process.env.MAX_HOSTS = '10';
+
+  let res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'hb-quiet', model: 'A100', vram_mb: 40960, timestamp: 1620000000}));
+  assert.strictEqual(res.statusCode, 200);
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'hb-busy', model: 'A100', vram_mb: 40960, timestamp: 1620000000}));
+  assert.strictEqual(res.statusCode, 200);
+  server.hostRegistry.get('hb-quiet').seenAt = Date.now() - server.hostTtlMs() - 1000;
+
+  // Count full walks of the registry made while the reports below are handled.
+  let walks = 0;
+  const iterate = Map.prototype[Symbol.iterator];
+  server.hostRegistry[Symbol.iterator] = function () {
+    walks += 1;
+    return iterate.call(this);
+  };
+  try {
+    res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'hb-busy', model: 'A100', vram_mb: 40960, timestamp: 1620000001}));
+    assert.strictEqual(res.statusCode, 200, 'a heartbeat from a registered host');
+    res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'hb-new', model: 'A100', vram_mb: 40960, timestamp: 1620000001}));
+    assert.strictEqual(res.statusCode, 200, 'a new host while the cap has room');
+    res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify([{id: 'hb-busy', model: 'A100', vram_mb: 40960, timestamp: 1620000002}, {id: 'hb-new2', model: 'A100', vram_mb: 40960, timestamp: 1620000002}]));
+    assert.strictEqual(res.statusCode, 200, 'a batch while the cap has room');
+  } finally {
+    delete server.hostRegistry[Symbol.iterator];
+  }
+  assert.strictEqual(walks, 0, `reports that fit under MAX_HOSTS walked the registry ${walks} time(s)`);
+
+  res = await request({method: 'GET', port, path: '/hosts/hb-quiet'});
+  assert.strictEqual(res.statusCode, 200, 'the quiet host is still registered');
+  assert.strictEqual(JSON.parse(res.body).stale, true, 'and reported as stale');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
