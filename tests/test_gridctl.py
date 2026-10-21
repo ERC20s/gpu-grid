@@ -11,9 +11,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
 HERE = os.path.dirname(__file__)
+ROOT = os.path.dirname(HERE)
 JOB_FILE = os.path.join(HERE, 'fixtures', 'simple_job.json')
 MATCH_JOB_FILE = os.path.join(HERE, 'fixtures', 'match_job.json')
-SCRIPT = os.path.join(os.path.dirname(HERE), 'scripts', 'gridctl.py')
+SCRIPT = os.path.join(ROOT, 'scripts', 'gridctl.py')
+
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+from gridctl import build_payload  # noqa: E402
 
 
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -80,8 +84,6 @@ class MatchHandler(BaseHTTPRequestHandler):
     of quietly matching everything - which is exactly the bug being fixed.
     """
 
-    last_payload = None
-
     def log_message(self, *args):  # keep the test output clean
         pass
 
@@ -93,7 +95,11 @@ class MatchHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    last_payload = None
+    posts = 0
+
     def do_POST(self):
+        MatchHandler.posts += 1
         if self.path != '/match':
             self._send_json({'error': 'not found'}, code=404)
             return
@@ -160,3 +166,46 @@ def test_gridctl_submits_and_streams_logs(httpserver, capsys):
     assert 'starting' in out
     assert 'hello world' in out
     assert proc.returncode == 0
+
+
+# A job file the CLI cannot understand must never reach the scheduler as
+# {"job": {}}: an empty job has no filter, so the whole live grid "matches"
+# and the top host is handed a job that was never specified.
+MALFORMED_JOB_DOCUMENTS = [
+    ('a list', '[1, 2, 3]'),
+    ('a string', '"just a string"'),
+    ('a number', '42'),
+    ('null', 'null'),
+    ('a job key that is a string', '{"job": "not-an-object"}'),
+    ('a job key that is null', '{"job": null}'),
+    ('a job key that is a list', '{"job": [{"required_min_vram_mb": 1}]}'),
+]
+
+
+@pytest.mark.parametrize('what,text', MALFORMED_JOB_DOCUMENTS, ids=[w for w, _ in MALFORMED_JOB_DOCUMENTS])
+def test_build_payload_refuses_malformed_job_document(what, text):
+    with pytest.raises(ValueError) as excinfo:
+        build_payload(json.loads(text))
+    assert 'object' in str(excinfo.value)
+
+
+def test_build_payload_wraps_a_bare_job_spec_and_passes_through_a_full_payload():
+    assert build_payload({'required_min_vram_mb': 8192}) == {'job': {'required_min_vram_mb': 8192}}
+    full = {'job': {'max_util_pct': 10}, 'hosts': [{'id': 'h', 'model': 'A100', 'vram_mb': 1, 'timestamp': 1}]}
+    assert build_payload(full) == full
+    # An empty object is a valid (unfiltered) job: only a wrongly SHAPED file is refused.
+    assert build_payload({}) == {'job': {}}
+
+
+@pytest.mark.parametrize('what,text', MALFORMED_JOB_DOCUMENTS, ids=[w for w, _ in MALFORMED_JOB_DOCUMENTS])
+def test_gridctl_rejects_malformed_job_file_without_posting(matchserver, tmp_path, what, text):
+    job_file = tmp_path / 'job.json'
+    job_file.write_text(text)
+    posts_before = MatchHandler.posts
+    proc = subprocess.run(
+        [sys.executable, SCRIPT, '--scheduler-url', matchserver, '--job-file', str(job_file)],
+        capture_output=True, text=True, timeout=10)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert 'Invalid job file' in proc.stderr, proc.stderr
+    assert 'matched' not in proc.stdout, proc.stdout
+    assert MatchHandler.posts == posts_before, 'nothing was posted to the scheduler'

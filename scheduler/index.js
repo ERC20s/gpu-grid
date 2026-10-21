@@ -79,19 +79,21 @@ const hostRegistry = new Map();
 let posts_hosts_total = 0;
 let posts_match_total = 0;
 
+// Drop every registry entry whose last report is older than the TTL. Shared
+// by the live views, the periodic sweeper and the MAX_HOSTS check, so a dead
+// host never counts against anything once its TTL has run out.
+function evictExpired(now = Date.now()) {
+  const ttl = hostTtlMs();
+  for (const [id, entry] of hostRegistry) {
+    if (now - entry.seenAt > ttl) hostRegistry.delete(id);
+  }
+}
+
 // Live hosts only. Entries past the TTL are removed from the map as they are
 // read, so a grid that churns through hosts does not grow without bound.
 function freshHosts(now = Date.now()) {
-  const ttl = hostTtlMs();
-  const live = [];
-  for (const [id, entry] of hostRegistry) {
-    if (now - entry.seenAt > ttl) {
-      hostRegistry.delete(id);
-      continue;
-    }
-    live.push(entry.host);
-  }
-  return live;
+  evictExpired(now);
+  return Array.from(hostRegistry.values(), entry => entry.host);
 }
 
 // Everything in the registry, each entry annotated with liveness. Used by
@@ -282,7 +284,10 @@ const server = http.createServer((req, res) => {
       return unauthorized(req, res, 'POST /hosts needs "Authorization: Bearer <host token>"');
     }
 
-    let body = '';
+    // Raw chunks are kept as Buffers and decoded once on 'end': the socket
+    // can split a multi-byte UTF-8 character (an id like "host-é") across two
+    // chunks, and decoding each chunk on its own turns it into U+FFFD.
+    const chunks = [];
     let received = 0;
     let tooLarge = false;
 
@@ -296,14 +301,15 @@ const server = http.createServer((req, res) => {
         // writing makes the socket reset, so the client sees ECONNRESET
         // instead of the 413.
         tooLarge = true;
-        body = '';
+        chunks.length = 0;
         return;
       }
-      body += chunk;
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
 
     req.on('end', () => {
       if (tooLarge) return bodyTooLarge(res, limit);
+      const body = Buffer.concat(chunks).toString('utf8');
       try {
         const parsed = JSON.parse(body || '{}');
 
@@ -334,6 +340,9 @@ const server = http.createServer((req, res) => {
           // All valid, unique and authorised; before upserting, enforce MAX_HOSTS cap
           const cap = maxHosts();
           if (cap > 0) {
+            // A host whose TTL has run out is dead and must not hold a slot
+            // until the sweeper happens to run.
+            evictExpired();
             // compute net-new unique ids that would be added
             const incomingIds = new Set(parsed.map(h => h.id));
             let netNew = 0;
@@ -377,8 +386,10 @@ const server = http.createServer((req, res) => {
         // confused with server annotations.
         const cleaned = storedHost(host);
 
-        // Enforce MAX_HOSTS cap for single-host upserts
+        // Enforce MAX_HOSTS cap for single-host upserts; dead hosts do not
+        // hold a slot (see the batch path).
         const cap = maxHosts();
+        if (cap > 0) evictExpired();
         if (cap > 0 && !hostRegistry.has(cleaned.id) && hostRegistry.size + 1 > cap) {
           res.writeHead(507, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({error: 'registry_full', message: 'host registry limit reached'}));
@@ -571,7 +582,8 @@ const server = http.createServer((req, res) => {
         {'Retry-After': String(retryAfter)});
     }
 
-    let body = '';
+    // Buffers, decoded once on 'end' - see POST /hosts.
+    const chunks = [];
     let received = 0;
     let tooLarge = false;
 
@@ -582,14 +594,15 @@ const server = http.createServer((req, res) => {
       if (received > limit) {
         // Stop buffering; see POST /hosts for why the 413 waits for 'end'.
         tooLarge = true;
-        body = '';
+        chunks.length = 0;
         return;
       }
-      body += chunk;
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
 
     req.on('end', () => {
       if (tooLarge) return bodyTooLarge(res, limit);
+      const body = Buffer.concat(chunks).toString('utf8');
       try {
         const payload = JSON.parse(body || '{}');
 
@@ -673,6 +686,7 @@ module.exports = server;
 module.exports.hostRegistry = hostRegistry;
 module.exports.hostTtlMs = hostTtlMs;
 module.exports.freshHosts = freshHosts;
+module.exports.evictExpired = evictExpired;
 module.exports.validateHost = validateHost;
 module.exports.validateJob = validateJob;
 module.exports.validateMatchPayload = validateMatchPayload;
@@ -681,12 +695,7 @@ module.exports.submissionLimiter = submissionLimiter;
 // Background cleanup of stale registry entries.
 // cleanupStale(now): iterate hostRegistry and remove entries older than TTL.
 function cleanupStale(now = Date.now()) {
-  const ttl = hostTtlMs();
-  for (const [id, entry] of hostRegistry) {
-    if (now - entry.seenAt > ttl) {
-      hostRegistry.delete(id);
-    }
-  }
+  evictExpired(now);
   // Expired rate-limit windows go too, so idle users do not hold memory.
   submissionLimiter.sweep(now);
 }

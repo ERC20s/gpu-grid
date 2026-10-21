@@ -30,21 +30,29 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 
-def build_payload(document: Dict[str, Any]) -> Dict[str, Any]:
+def build_payload(document: Any) -> Dict[str, Any]:
     """Turn a job file into a POST /match payload.
 
     A file that already carries a "job" key is treated as a complete payload
-    (its optional "hosts" array is passed through). Anything else is treated as
-    the job spec itself and is wrapped in {"job": ...}.
-    """
-    if isinstance(document, dict) and isinstance(document.get('job'), dict):
-        payload: Dict[str, Any] = {'job': document['job']}
-        if isinstance(document.get('hosts'), list):
-            payload['hosts'] = document['hosts']
-        return payload
+    (its optional "hosts" array is passed through). Any other JSON object is
+    treated as the job spec itself and is wrapped in {"job": ...}.
 
-    payload = {'job': document if isinstance(document, dict) else {}}
-    if isinstance(document, dict) and isinstance(document.get('hosts'), list):
+    Anything that is not a JSON object - a list, a string, a number, null - or
+    a "job" key that is not an object, raises ValueError. The scheduler reads
+    an empty job as "no filter", so posting {"job": {}} in place of a job file
+    that could not be understood would match every live host.
+    """
+    if not isinstance(document, dict):
+        raise ValueError(
+            f"job file must hold a JSON object, not {type(document).__name__}")
+    if 'job' in document:
+        if not isinstance(document['job'], dict):
+            raise ValueError(
+                f'"job" must be a JSON object, not {type(document["job"]).__name__}')
+        payload: Dict[str, Any] = {'job': document['job']}
+    else:
+        payload = {'job': document}
+    if isinstance(document.get('hosts'), list):
         # A job document that carries its own candidate host list.
         payload['hosts'] = document['hosts']
     return payload
@@ -108,13 +116,13 @@ def job_id_of(data: Dict[str, Any]) -> str:
     return data.get('id') or data.get('job_id') or data.get('jobId')
 
 
-def submit_job(scheduler_url: str, job: Dict[str, Any], token: Optional[str] = None) -> Tuple[str, Any]:
-    """Post a job document and say what came back.
+def submit_job(scheduler_url: str, payload: Dict[str, Any], token: Optional[str] = None) -> Tuple[str, Any]:
+    """Post a payload from build_payload() and say what came back.
 
     Returns ("matches", [...]) for the scheduler's POST /match contract, or
     ("job_id", "<id>") when the endpoint answered with a job id instead.
     """
-    data = post_job(scheduler_url, build_payload(job), token)
+    data = post_job(scheduler_url, payload, token)
     if isinstance(data.get('matches'), list):
         return ('matches', data['matches'])
     job_id = job_id_of(data)
@@ -162,7 +170,13 @@ def main(argv=None):
     token = os.environ.get('GRID_USER_TOKEN') or None
 
     try:
-        kind, result = submit_job(args.scheduler_url, job, token)
+        payload = build_payload(job)
+    except ValueError as e:
+        print(f"Invalid job file {args.job_file}: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        kind, result = submit_job(args.scheduler_url, payload, token)
     except Exception as e:
         print(f"Job submission failed: {e}", file=sys.stderr)
         return 2
