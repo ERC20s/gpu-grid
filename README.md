@@ -112,7 +112,13 @@ Host-report schema (scheduler/lib/schema.js; POST /hosts answers 400 invalid_hos
 - free_memory_mb: number, 0-1048576 and not more than vram_mb - free GPU memory (optional)
 
 A POST /hosts batch holds at most 1000 reports. Fields the schema does not name are dropped
-before a report is stored, so GET /hosts returns only these fields.
+before a report is stored, so GET /hosts returns only these fields. Bodies are decoded as
+UTF-8 once they have fully arrived, so an id or model name with non-ASCII characters is
+stored as sent however the bytes were split in transit.
+
+When MAX_HOSTS is set, only hosts inside their TTL count against the cap: a host whose
+last report is older than HOST_TTL_SECONDS is evicted before a new host is counted, so a
+registry full of dead hosts does not answer 507 to a live one.
 
 This schema is an assumption for the minimal scheduler. If the host-agent implemented in the repository differs, the matcher will be adapted in a follow-up change.
 
@@ -160,7 +166,10 @@ scheduler's payload.job is the spec you wrote. Without that wrapper payload.job 
 undefined, the filter is empty and every live host "matches" - that was the old bug.
 A job file that already has a top-level "job" key is posted as it stands, and its
 optional "hosts" array is passed through (POST /match then matches that list instead
-of the live registry).
+of the live registry). A job file that is not a JSON object (a list, a string, a
+number, null), or whose "job" key is not an object, is refused before anything is
+posted: gridctl prints "Invalid job file" and exits 2. It used to post {"job": {}} in
+that case, which has no filter and so matched every live host.
 
 The reply {"matches": [...]} is printed best host first and the CLI exits 0:
 

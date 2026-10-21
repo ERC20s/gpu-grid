@@ -54,12 +54,43 @@ async function runTests() {
   const p2 = JSON.parse(res.body);
   assert(p2.error === 'registry_full', 'batch error code should be registry_full');
 
+  await testExpiredHostsDoNotHoldASlot(port);
+
   // Cleanup
   server.hostRegistry.clear();
   delete process.env.MAX_HOSTS;
 
   server.close();
   console.log('registry limit tests passed');
+}
+
+// A host whose TTL has run out is dead. It used to keep its slot until the
+// periodic sweeper ran (up to half a TTL later), so with the registry full of
+// dead hosts a live host reporting for the first time got 507.
+async function testExpiredHostsDoNotHoldASlot(port) {
+  server.hostRegistry.clear();
+  process.env.MAX_HOSTS = '1';
+
+  let res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'cap-dead', model: 'A100', vram_mb: 40960, timestamp: 1620000000}));
+  assert.strictEqual(res.statusCode, 200, 'the only slot goes to the first host');
+  const dead = server.hostRegistry.get('cap-dead');
+  assert(dead, 'cap-dead is registered');
+  dead.seenAt = Date.now() - server.hostTtlMs() - 1000; // past the TTL, not yet swept
+
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'cap-live', model: 'A100', vram_mb: 40960, timestamp: 1620000001}));
+  assert.strictEqual(res.statusCode, 200, `a live host takes the dead host's slot, got ${res.statusCode} ${res.body}`);
+  assert.deepStrictEqual(Array.from(server.hostRegistry.keys()), ['cap-live'], 'the dead host is gone and the live one is in');
+
+  // The batch path makes the same decision.
+  server.hostRegistry.get('cap-live').seenAt = Date.now() - server.hostTtlMs() - 1000;
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify([{id: 'cap-batch', model: 'A100', vram_mb: 40960, timestamp: 1620000002}]));
+  assert.strictEqual(res.statusCode, 200, `a batch takes the dead host's slot, got ${res.statusCode} ${res.body}`);
+  assert.deepStrictEqual(Array.from(server.hostRegistry.keys()), ['cap-batch']);
+
+  // A live host still holds its slot: the cap is enforced, not bypassed.
+  res = await request({method: 'POST', port, path: '/hosts'}, JSON.stringify({id: 'cap-extra', model: 'A100', vram_mb: 40960, timestamp: 1620000003}));
+  assert.strictEqual(res.statusCode, 507, 'a second live host is still over the cap');
+  assert.strictEqual(JSON.parse(res.body).error, 'registry_full');
 }
 
 if (require.main === module) runTests().catch(err => { console.error(err); process.exit(1); });
