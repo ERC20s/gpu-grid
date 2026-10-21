@@ -1,5 +1,8 @@
 const http = require('http');
 const { match } = require('./lib/matcher');
+const { HOST_SCHEMA, JOB_SCHEMA, MAX_HOSTS_PER_REQUEST, isPlainObject, validateObject, pick } = require('./lib/schema');
+const { hostTokens, userTokens, authenticateHost, authenticateUser } = require('./lib/auth');
+const { RateLimiter } = require('./lib/ratelimit');
 
 const PORT = process.env.PORT || 3000;
 
@@ -41,6 +44,28 @@ function maxHosts() {
   if (parsed <= 0) return 0;
   return Math.floor(parsed);
 }
+
+// Job submissions (POST /match) per authenticated user per window. Read per
+// request like the settings above. Keyed by the user id the token resolves
+// to - never by x-forwarded-for or any other client-supplied header.
+function positiveIntFromEnv(name, fallback) {
+  const raw = process.env[name];
+  const parsed = Number(raw);
+  if (raw === undefined || raw === '' || !Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
+function submissionRateLimit() {
+  return {
+    limit: positiveIntFromEnv('SUBMIT_RATE_LIMIT', 60),
+    windowMs: positiveIntFromEnv('SUBMIT_RATE_WINDOW_SECONDS', 60) * 1000,
+    maxKeys: positiveIntFromEnv('RATE_LIMIT_MAX_KEYS', 10000)
+  };
+}
+
+const submissionLimiter = new RateLimiter();
 
 // In-memory host registry: Map<id, {host, seenAt}>
 // seenAt is a SERVER-side stamp (Date.now()), deliberately kept outside the
@@ -108,61 +133,43 @@ function bodyTooLarge(res, limit) {
   res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
 }
 
-function isFiniteNumber(v) {
-  return typeof v === 'number' && Number.isFinite(v);
+// Answer an unauthenticated or rate-limited request without reading its
+// body. resume() lets Node discard whatever the client is still sending, so
+// it gets the answer instead of a reset connection.
+function rejectBeforeBody(req, res, status, payload, headers = {}) {
+  res.writeHead(status, Object.assign({'Content-Type': 'application/json'}, headers));
+  res.end(JSON.stringify(payload));
+  req.resume();
 }
 
-// Validate a single host object. Returns null on success, or an error message
-// string suitable for the validationError response.
+function unauthorized(req, res, message) {
+  rejectBeforeBody(req, res, 401, {error: 'unauthorized', message}, {'WWW-Authenticate': 'Bearer'});
+}
+
+function forbidden(res, message) {
+  res.writeHead(403, {'Content-Type': 'application/json'});
+  res.end(JSON.stringify({error: 'forbidden', message}));
+}
+
+// Validate a single host report against HOST_SCHEMA (lib/schema.js).
+// Returns null on success, or an error message string suitable for the
+// validationError response.
 function validateHost(host) {
-  if (!host || typeof host !== 'object') return 'expected object';
-
-  // Basic required fields presence
-  const required = ['id', 'model', 'vram_mb', 'timestamp'];
-  for (const k of required) {
-    if (host[k] === undefined) {
-      return `missing ${k}`;
-    }
+  const err = validateObject(host, HOST_SCHEMA);
+  if (err) return err;
+  // Free GPU memory is a hard scheduling constraint (lib/matcher.js), so a
+  // card cannot report more free memory than it has.
+  if (host.free_memory_mb !== undefined && host.free_memory_mb > host.vram_mb) {
+    return 'free_memory_mb must not exceed vram_mb';
   }
-
-  // id: non-empty string, capped length
-  if (typeof host.id !== 'string' || host.id.length === 0) {
-    return 'id must be a non-empty string';
-  }
-  if (host.id.length > 256) {
-    return 'id too long';
-  }
-
-  // model: non-empty string
-  if (typeof host.model !== 'string' || host.model.length === 0) {
-    return 'model must be a non-empty string';
-  }
-
-  // vram_mb: finite non-negative number
-  if (!isFiniteNumber(host.vram_mb) || host.vram_mb < 0) {
-    return 'vram_mb must be a non-negative number';
-  }
-
-  // timestamp: finite number (allow seconds or ms)
-  if (!isFiniteNumber(host.timestamp)) {
-    return 'timestamp must be a number';
-  }
-
-  // optional gpu_util_pct: finite number in [0,100]
-  if (host.gpu_util_pct !== undefined) {
-    if (!isFiniteNumber(host.gpu_util_pct) || host.gpu_util_pct < 0 || host.gpu_util_pct > 100) {
-      return 'gpu_util_pct must be between 0 and 100';
-    }
-  }
-
-  // optional free_memory_mb: finite non-negative number
-  if (host.free_memory_mb !== undefined) {
-    if (!isFiniteNumber(host.free_memory_mb) || host.free_memory_mb < 0) {
-      return 'free_memory_mb must be a non-negative number';
-    }
-  }
-
   return null;
+}
+
+// The stored copy of a host report: only the fields HOST_SCHEMA names. This
+// also drops the server-only annotations (seenAt, stale, last_seen_ms_ago) a
+// reporter might try to inject.
+function storedHost(host) {
+  return pick(host, HOST_SCHEMA);
 }
 
 // Validate a job spec exactly as lib/matcher.js reads it. The matcher silently
@@ -174,41 +181,10 @@ function validateHost(host) {
 // belong to the job-execution side, not to matching.
 // Returns null on success or an error message string.
 function validateJob(job) {
-  if (!job || typeof job !== 'object' || Array.isArray(job)) {
+  if (!isPlainObject(job)) {
     return 'job must be an object';
   }
-
-  if (job.required_min_vram_mb !== undefined) {
-    if (!isFiniteNumber(job.required_min_vram_mb) || job.required_min_vram_mb < 0) {
-      return 'job.required_min_vram_mb must be a non-negative number';
-    }
-  }
-
-  if (job.max_util_pct !== undefined) {
-    if (!isFiniteNumber(job.max_util_pct) || job.max_util_pct < 0 || job.max_util_pct > 100) {
-      return 'job.max_util_pct must be a number between 0 and 100';
-    }
-  }
-
-  if (job.required_min_free_memory_mb !== undefined) {
-    if (!isFiniteNumber(job.required_min_free_memory_mb) || job.required_min_free_memory_mb < 0) {
-      return 'job.required_min_free_memory_mb must be a non-negative number';
-    }
-  }
-
-  if (job.acceptable_gpu_models !== undefined) {
-    if (!Array.isArray(job.acceptable_gpu_models)) {
-      return 'job.acceptable_gpu_models must be an array of strings';
-    }
-    for (let i = 0; i < job.acceptable_gpu_models.length; i++) {
-      const model = job.acceptable_gpu_models[i];
-      if (typeof model !== 'string' || model.length === 0) {
-        return `job.acceptable_gpu_models[${i}] must be a non-empty string`;
-      }
-    }
-  }
-
-  return null;
+  return validateObject(job, JOB_SCHEMA, 'job.');
 }
 
 // Validate a whole POST /match payload: {"job": {...}, "hosts": [...]}. The
@@ -231,6 +207,9 @@ function validateMatchPayload(payload) {
   if (payload.hosts !== undefined) {
     if (!Array.isArray(payload.hosts)) {
       return 'hosts must be an array';
+    }
+    if (payload.hosts.length > MAX_HOSTS_PER_REQUEST) {
+      return `hosts must have at most ${MAX_HOSTS_PER_REQUEST} entries`;
     }
     // Duplicate id check: reject the whole payload if any id repeats, as the
     // POST /hosts batch path does. This prevents duplicated matches and catches
@@ -296,6 +275,13 @@ const server = http.createServer((req, res) => {
       }
     }
 
+    // Host reports need a host token (HOST_TOKENS). Checked before the body
+    // is read; which host ids the token may write is checked once it is.
+    const allowedHostIds = authenticateHost(req);
+    if (allowedHostIds === null) {
+      return unauthorized(req, res, 'POST /hosts needs "Authorization: Bearer <host token>"');
+    }
+
     let body = '';
     let received = 0;
     let tooLarge = false;
@@ -323,6 +309,9 @@ const server = http.createServer((req, res) => {
 
         if (Array.isArray(parsed)) {
           // Batch path: validate all first, then upsert atomically
+          if (parsed.length > MAX_HOSTS_PER_REQUEST) {
+            return validationError(res, `batch must have at most ${MAX_HOSTS_PER_REQUEST} hosts`);
+          }
           const seen = new Set();
           for (let i = 0; i < parsed.length; i++) {
             const err = validateHost(parsed[i]);
@@ -336,7 +325,13 @@ const server = http.createServer((req, res) => {
             }
             seen.add(id);
           }
-          // All valid and unique; before upserting, enforce MAX_HOSTS cap
+          // The whole batch is rejected if the token may not write any one id.
+          for (let i = 0; i < parsed.length; i++) {
+            if (!allowedHostIds.has(parsed[i].id)) {
+              return forbidden(res, `hosts[${i}]: token is not valid for host "${parsed[i].id}"`);
+            }
+          }
+          // All valid, unique and authorised; before upserting, enforce MAX_HOSTS cap
           const cap = maxHosts();
           if (cap > 0) {
             // compute net-new unique ids that would be added
@@ -352,16 +347,13 @@ const server = http.createServer((req, res) => {
             }
           }
 
-          // Upsert all, but first remove any reserved server-only fields a reporter
-          // might have sent so clients cannot inject seenAt/stale/last_seen_ms_ago
-          // into the stored host object.
+          // Upsert all, storing only the schema's fields so clients cannot
+          // inject seenAt/stale/last_seen_ms_ago (or anything else) into the
+          // stored host object.
           const stored = [];
           const now = Date.now();
           for (const h of parsed) {
-            const cleaned = Object.assign({}, h);
-            delete cleaned.seenAt;
-            delete cleaned.stale;
-            delete cleaned.last_seen_ms_ago;
+            const cleaned = storedHost(h);
             hostRegistry.set(cleaned.id, {host: cleaned, seenAt: now});
             stored.push(cleaned);
           }
@@ -377,12 +369,13 @@ const server = http.createServer((req, res) => {
         const err = validateHost(host);
         if (err) return validationError(res, err);
 
-        // Remove server-only fields that a reporter might have supplied so the
-        // stored host object cannot be confused with server annotations.
-        const cleaned = Object.assign({}, host);
-        delete cleaned.seenAt;
-        delete cleaned.stale;
-        delete cleaned.last_seen_ms_ago;
+        if (!allowedHostIds.has(host.id)) {
+          return forbidden(res, `token is not valid for host "${host.id}"`);
+        }
+
+        // Store only the schema's fields, so the stored host object cannot be
+        // confused with server annotations.
+        const cleaned = storedHost(host);
 
         // Enforce MAX_HOSTS cap for single-host upserts
         const cap = maxHosts();
@@ -455,6 +448,14 @@ const server = http.createServer((req, res) => {
       res.writeHead(400, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({error: 'invalid_host_id', message: 'malformed host id'}));
       return;
+    }
+    // Only the host's own token may remove it.
+    const allowedHostIds = authenticateHost(req);
+    if (allowedHostIds === null) {
+      return unauthorized(req, res, 'DELETE /hosts/:id needs "Authorization: Bearer <host token>"');
+    }
+    if (!allowedHostIds.has(id)) {
+      return forbidden(res, `token is not valid for host "${id}"`);
     }
     const existed = hostRegistry.delete(id);
     if (existed) {
@@ -556,6 +557,20 @@ const server = http.createServer((req, res) => {
       }
     }
 
+    // Job submission needs a user token (USER_TOKENS), and is rate limited
+    // per authenticated user id. Both are decided before the body is read.
+    const userId = authenticateUser(req);
+    if (userId === null) {
+      return unauthorized(req, res, 'POST /match needs "Authorization: Bearer <user token>"');
+    }
+    const verdict = submissionLimiter.hit(userId, submissionRateLimit());
+    if (!verdict.allowed) {
+      const retryAfter = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
+      return rejectBeforeBody(req, res, 429,
+        {error: 'rate_limited', message: `too many submissions; retry in ${retryAfter}s`},
+        {'Retry-After': String(retryAfter)});
+    }
+
     let body = '';
     let received = 0;
     let tooLarge = false;
@@ -599,6 +614,19 @@ const server = http.createServer((req, res) => {
 });
 
 if (require.main === module) {
+  // A malformed token table would silently reject every write; refuse to
+  // start instead. An empty one is allowed (reads still work) but loud.
+  for (const [name, load] of [['HOST_TOKENS', hostTokens], ['USER_TOKENS', userTokens]]) {
+    const {table, error} = load();
+    if (error) {
+      console.error(`scheduler: ${error}`);
+      process.exit(1);
+    }
+    if (table.size === 0) {
+      console.warn(`scheduler: ${name} is not set - every write that needs it will get 401`);
+    }
+  }
+
   server.listen(PORT, () => {
     console.log('scheduler listening on', PORT, '- host TTL', Math.floor(hostTtlMs() / 1000) + 's');
   });
@@ -648,6 +676,7 @@ module.exports.freshHosts = freshHosts;
 module.exports.validateHost = validateHost;
 module.exports.validateJob = validateJob;
 module.exports.validateMatchPayload = validateMatchPayload;
+module.exports.submissionLimiter = submissionLimiter;
 
 // Background cleanup of stale registry entries.
 // cleanupStale(now): iterate hostRegistry and remove entries older than TTL.
@@ -658,6 +687,8 @@ function cleanupStale(now = Date.now()) {
       hostRegistry.delete(id);
     }
   }
+  // Expired rate-limit windows go too, so idle users do not hold memory.
+  submissionLimiter.sweep(now);
 }
 
 // Start a periodic sweeper that runs at an adaptive interval based on the TTL.
