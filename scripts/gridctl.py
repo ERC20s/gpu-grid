@@ -37,8 +37,9 @@ def build_payload(document: Any) -> Dict[str, Any]:
     (its optional "hosts" array is passed through). Any other JSON object is
     treated as the job spec itself and is wrapped in {"job": ...}.
 
-    Anything that is not a JSON object - a list, a string, a number, null - or
-    a "job" key that is not an object, raises ValueError. The scheduler reads
+    Anything that is not a JSON object - a list, a string, a number, null - a
+    "job" key that is not an object, or a "hosts" key that is not a list,
+    raises ValueError. The scheduler reads
     an empty job as "no filter", so posting {"job": {}} in place of a job file
     that could not be understood would match every live host.
     """
@@ -52,8 +53,12 @@ def build_payload(document: Any) -> Dict[str, Any]:
         payload: Dict[str, Any] = {'job': document['job']}
     else:
         payload = {'job': document}
-    if isinstance(document.get('hosts'), list):
-        # A job document that carries its own candidate host list.
+    if 'hosts' in document:
+        # A job document that carries its own candidate host list. Dropping a
+        # "hosts" that is not a list would match the live registry instead.
+        if not isinstance(document['hosts'], list):
+            raise ValueError(
+                f'"hosts" must be a JSON array, not {type(document["hosts"]).__name__}')
         payload['hosts'] = document['hosts']
     return payload
 
