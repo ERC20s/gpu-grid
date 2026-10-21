@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scheduler/package-lock.json
+
+      - name: Install scheduler dependencies
+        working-directory: scheduler
+        run: npm ci
+
+      - name: Scheduler tests (npm test)
+        working-directory: scheduler
+        run: npm test
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install Python test dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install pytest requests
+
+      - name: Python tests (pytest -q, starts the scheduler itself)
+        run: .venv/bin/pytest -q
