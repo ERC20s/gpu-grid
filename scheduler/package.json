@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node test/matcher.test.js && node test/hosts.test.js && node test/staleness.test.js && node test/body_size.test.js && node test/health.test.js && node test/match.test.js"
+    "test": "node test/matcher.test.js && node test/hosts.test.js && node test/staleness.test.js && node test/body_size.test.js && node test/health.test.js && node test/match.test.js && node test/cors.test.js && node test/hosts_reserved_fields.test.js && node test/match_body_size.test.js && node test/match_duplicate_hosts.test.js && node test/metrics.test.js && node test/registry_limit.test.js"
   },
   "author": "gpu-grid",
   "license": "MIT"
