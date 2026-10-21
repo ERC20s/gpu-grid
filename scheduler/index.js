@@ -340,16 +340,21 @@ const server = http.createServer((req, res) => {
           // All valid, unique and authorised; before upserting, enforce MAX_HOSTS cap
           const cap = maxHosts();
           if (cap > 0) {
-            // A host whose TTL has run out is dead and must not hold a slot
-            // until the sweeper happens to run.
-            evictExpired();
             // compute net-new unique ids that would be added
             const incomingIds = new Set(parsed.map(h => h.id));
-            let netNew = 0;
-            for (const id of incomingIds) {
-              if (!hostRegistry.has(id)) netNew += 1;
-            }
-            if (hostRegistry.size + netNew > cap) {
+            const fits = () => {
+              let netNew = 0;
+              for (const id of incomingIds) {
+                if (!hostRegistry.has(id)) netNew += 1;
+              }
+              return hostRegistry.size + netNew <= cap;
+            };
+            // A host whose TTL has run out is dead and must not hold a slot
+            // until the sweeper happens to run. Evict only when the batch
+            // does not fit: walking the registry on every report would make
+            // each heartbeat cost O(registry size).
+            if (!fits()) evictExpired();
+            if (!fits()) {
               res.writeHead(507, {'Content-Type': 'application/json'});
               res.end(JSON.stringify({error: 'registry_full', message: 'host registry limit reached'}));
               return;
@@ -387,10 +392,12 @@ const server = http.createServer((req, res) => {
         const cleaned = storedHost(host);
 
         // Enforce MAX_HOSTS cap for single-host upserts; dead hosts do not
-        // hold a slot (see the batch path).
+        // hold a slot, and are only evicted when a slot is needed (see the
+        // batch path).
         const cap = maxHosts();
-        if (cap > 0) evictExpired();
-        if (cap > 0 && !hostRegistry.has(cleaned.id) && hostRegistry.size + 1 > cap) {
+        const fits = () => hostRegistry.has(cleaned.id) || hostRegistry.size + 1 <= cap;
+        if (cap > 0 && !fits()) evictExpired();
+        if (cap > 0 && !fits()) {
           res.writeHead(507, {'Content-Type': 'application/json'});
           res.end(JSON.stringify({error: 'registry_full', message: 'host registry limit reached'}));
           return;
