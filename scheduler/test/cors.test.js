@@ -1,10 +1,11 @@
 const http = require('http');
 const assert = require('assert');
 const server = require('../index');
+const { withAuth } = require('./support/auth');
 
 function request(options, body) {
   return new Promise((resolve, reject) => {
-    const req = http.request(options, res => {
+    const req = http.request(withAuth(options, body), res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => resolve({statusCode: res.statusCode, headers: res.headers, body: data}));

@@ -15,12 +15,17 @@ The scheduler's POST /match contract (see README.md and scheduler/index.js) is:
 So the job spec must be wrapped in a "job" key: posting the bare job document
 as the whole body makes payload.job undefined on the scheduler side, which
 means an empty filter that every live host passes.
+
+POST /match needs a user token. gridctl reads it from the GRID_USER_TOKEN
+environment variable (not a flag, so it stays out of shell history and the
+process list) and sends it as "Authorization: Bearer <token>".
 """
 import argparse
 import json
+import os
 import sys
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -45,18 +50,25 @@ def build_payload(document: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
-def post_job(scheduler_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def auth_headers(token: Optional[str]) -> Dict[str, str]:
+    return {'Authorization': f'Bearer {token}'} if token else {}
+
+
+def post_job(scheduler_url: str, payload: Dict[str, Any], token: Optional[str] = None) -> Dict[str, Any]:
     """POST the payload to /match, falling back to /jobs, and return the JSON."""
     base = scheduler_url.rstrip('/')
     for endpoint in ("/match", "/jobs"):
         url = f"{base}{endpoint}"
         try:
-            resp = requests.post(url, json=payload)
+            resp = requests.post(url, json=payload, headers=auth_headers(token))
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to connect to scheduler at {url}: {e}")
         if resp.status_code in (404, 405):
             # Try next endpoint
             continue
+        if resp.status_code == 401:
+            hint = "set GRID_USER_TOKEN" if not token else "GRID_USER_TOKEN was not accepted"
+            raise RuntimeError(f"Scheduler returned 401 ({hint}): {resp.text}")
         if not resp.ok:
             raise RuntimeError(f"Scheduler returned {resp.status_code}: {resp.text}")
         data = resp.json()
@@ -96,13 +108,13 @@ def job_id_of(data: Dict[str, Any]) -> str:
     return data.get('id') or data.get('job_id') or data.get('jobId')
 
 
-def submit_job(scheduler_url: str, job: Dict[str, Any]) -> Tuple[str, Any]:
+def submit_job(scheduler_url: str, job: Dict[str, Any], token: Optional[str] = None) -> Tuple[str, Any]:
     """Post a job document and say what came back.
 
     Returns ("matches", [...]) for the scheduler's POST /match contract, or
     ("job_id", "<id>") when the endpoint answered with a job id instead.
     """
-    data = post_job(scheduler_url, build_payload(job))
+    data = post_job(scheduler_url, build_payload(job), token)
     if isinstance(data.get('matches'), list):
         return ('matches', data['matches'])
     job_id = job_id_of(data)
@@ -111,12 +123,13 @@ def submit_job(scheduler_url: str, job: Dict[str, Any]) -> Tuple[str, Any]:
     raise RuntimeError(f"Scheduler response contained neither matches nor a job id: {data}")
 
 
-def stream_logs(scheduler_url: str, job_id: str, poll_interval: float = 0.5) -> int:
+def stream_logs(scheduler_url: str, job_id: str, poll_interval: float = 0.5,
+                token: Optional[str] = None) -> int:
     base = scheduler_url.rstrip('/')
     url = f"{base}/jobs/{job_id}/logs"
     while True:
         try:
-            resp = requests.get(url)
+            resp = requests.get(url, headers=auth_headers(token))
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to get logs from {url}: {e}")
         if not resp.ok:
@@ -146,8 +159,10 @@ def main(argv=None):
         print(f"Failed to read job file: {e}", file=sys.stderr)
         return 2
 
+    token = os.environ.get('GRID_USER_TOKEN') or None
+
     try:
-        kind, result = submit_job(args.scheduler_url, job)
+        kind, result = submit_job(args.scheduler_url, job, token)
     except Exception as e:
         print(f"Job submission failed: {e}", file=sys.stderr)
         return 2
@@ -159,7 +174,7 @@ def main(argv=None):
     print(f"Job submitted: {job_id}")
 
     try:
-        return_code = stream_logs(args.scheduler_url, job_id, poll_interval=args.poll_interval)
+        return_code = stream_logs(args.scheduler_url, job_id, poll_interval=args.poll_interval, token=token)
     except Exception as e:
         print(f"Error streaming logs: {e}", file=sys.stderr)
         return 3
