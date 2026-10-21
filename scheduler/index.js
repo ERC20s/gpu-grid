@@ -103,6 +103,11 @@ function jobValidationError(res, message) {
   res.end(JSON.stringify({error: 'invalid_job', message}));
 }
 
+function bodyTooLarge(res, limit) {
+  res.writeHead(413, {'Content-Type': 'application/json'});
+  res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
+}
+
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
@@ -281,7 +286,9 @@ const server = http.createServer((req, res) => {
       const parsedCL = Number(rawCL);
       if (Number.isFinite(parsedCL) && parsedCL > limit) {
         if (!res.headersSent) {
-          res.writeHead(413, {'Content-Type': 'application/json'});
+          // Connection: close tells a keep-alive client not to reuse this
+          // socket, which is destroyed below.
+          res.writeHead(413, {'Content-Type': 'application/json', 'Connection': 'close'});
           res.end(JSON.stringify({error: 'request_too_large', message: `declared Content-Length ${parsedCL} exceeds ${limit} bytes`}));
         }
         try { req.destroy(); } catch (e) {}
@@ -298,20 +305,19 @@ const server = http.createServer((req, res) => {
       const chunkLen = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
       received += chunkLen;
       if (received > limit) {
+        // Stop buffering, but keep draining the body and answer on 'end'.
+        // Answering (or destroying the request) while the client is still
+        // writing makes the socket reset, so the client sees ECONNRESET
+        // instead of the 413.
         tooLarge = true;
-        if (!res.headersSent) {
-          res.writeHead(413, {'Content-Type': 'application/json'});
-          res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
-        }
-        // Close the connection and stop processing further data.
-        try { req.destroy(); } catch (e) {}
+        body = '';
         return;
       }
       body += chunk;
     });
 
     req.on('end', () => {
-      if (tooLarge) return;
+      if (tooLarge) return bodyTooLarge(res, limit);
       try {
         const parsed = JSON.parse(body || '{}');
 
@@ -540,7 +546,9 @@ const server = http.createServer((req, res) => {
       const parsedCL = Number(rawCL);
       if (Number.isFinite(parsedCL) && parsedCL > limit) {
         if (!res.headersSent) {
-          res.writeHead(413, {'Content-Type': 'application/json'});
+          // Connection: close tells a keep-alive client not to reuse this
+          // socket, which is destroyed below.
+          res.writeHead(413, {'Content-Type': 'application/json', 'Connection': 'close'});
           res.end(JSON.stringify({error: 'request_too_large', message: `declared Content-Length ${parsedCL} exceeds ${limit} bytes`}));
         }
         try { req.destroy(); } catch (e) {}
@@ -557,19 +565,16 @@ const server = http.createServer((req, res) => {
       const chunkLen = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
       received += chunkLen;
       if (received > limit) {
+        // Stop buffering; see POST /hosts for why the 413 waits for 'end'.
         tooLarge = true;
-        if (!res.headersSent) {
-          res.writeHead(413, {'Content-Type': 'application/json'});
-          res.end(JSON.stringify({error: 'request_too_large', message: `body exceeds ${limit} bytes`}));
-        }
-        try { req.destroy(); } catch (e) {}
+        body = '';
         return;
       }
       body += chunk;
     });
 
     req.on('end', () => {
-      if (tooLarge) return;
+      if (tooLarge) return bodyTooLarge(res, limit);
       try {
         const payload = JSON.parse(body || '{}');
 
