@@ -12,6 +12,35 @@ The scheduler provides a minimal HTTP endpoint POST /match which accepts a JSON 
 
 Response is JSON: {"matches": [ <host objects in ranked order> ] }
 
+Authentication:
+
+Every mutating endpoint needs "Authorization: Bearer <token>". Reads (GET /hosts,
+GET /hosts/:id, GET /health, GET /metrics) stay open.
+
+- POST /hosts (host ingest; re-reporting is the heartbeat that keeps a host live) and
+  DELETE /hosts/:id need a HOST token. HOST_TOKENS maps each host id to its token, and a
+  token may only write the host ids it is configured for: host-a's token posting a report
+  for host-b, or a batch that contains host-b, gets 403 forbidden and nothing is stored.
+- POST /match (job submission) needs a USER token. USER_TOKENS maps each user id to its
+  token; no two users may share one. A host token is not a user token, and vice versa.
+- No token, an unknown token, or a scheme other than Bearer gets 401 unauthorized before
+  the body is read.
+
+Both settings are JSON objects, {"<id>": "<token>", ...}, with tokens of at least 16
+non-space characters (`openssl rand -hex 32` makes a good one). The values live on the
+server and never in this repository; .env.example lists the names. If either is unset,
+every write that needs it gets 401 - the scheduler fails closed - and a malformed value
+stops the scheduler from starting.
+
+Submission rate limit:
+
+POST /match is limited per authenticated user id: SUBMIT_RATE_LIMIT submissions (default 60)
+per SUBMIT_RATE_WINDOW_SECONDS (default 60). Over the limit the answer is 429 rate_limited
+with a Retry-After header. The key is the user id the token resolves to, never
+x-forwarded-for or any other header a client can set, and a 401 spends nobody's budget.
+The limiter tracks at most RATE_LIMIT_MAX_KEYS users (default 10000); a window's entry is
+evicted once it ends, and if the table is still full the oldest window makes room.
+
 POST /match payload rules:
 
 The payload is validated before anything is matched, because the matcher treats a value it
@@ -24,16 +53,30 @@ instead of failing. A payload that breaks a rule below gets 400
   match. An empty body is the same error.
 - "job" must be an object. Unknown fields inside it (image, cmd, resources, ...) are ignored,
   not rejected - only the matching fields below are checked.
-- required_min_vram_mb, when present, must be a finite number >= 0.
+- required_min_vram_mb, when present, must be a number between 0 and 1048576.
+- required_min_free_memory_mb, when present, must be a number between 0 and 1048576. It is
+  a hard constraint (see Free GPU memory below).
 - max_util_pct, when present, must be a finite number between 0 and 100. The string "10" is
   rejected; it used to mean "no utilisation limit" and returned busy hosts.
-- acceptable_gpu_models, when present, must be an array of non-empty strings. The bare string
-  "A100" is rejected; it used to mean "any model".
-- "hosts", when present, must be an array and every entry must satisfy the same host schema
-  POST /hosts enforces. A bad entry is reported as hosts[<i>]: <reason>.
+- acceptable_gpu_models, when present, must be an array of at most 64 strings of 1-128
+  characters. The bare string "A100" is rejected; it used to mean "any model".
+- "hosts", when present, must be an array of at most 1000 entries and every entry must
+  satisfy the same host schema POST /hosts enforces. A bad entry is reported as
+  hosts[<i>]: <reason>.
 
 A body larger than MAX_REQUEST_SIZE_BYTES still gets 413 request_too_large, and a body that is
 not JSON at all still gets 400 invalid_json.
+
+Free GPU memory:
+
+A job that carries required_min_free_memory_mb is only ever matched to a host that reported
+at least that much free_memory_mb. A host that did not report free_memory_mb cannot prove it
+has the room and is excluded, and so is a host that is idle or has a big card but too little
+of it free. A job needing more memory than any host has free is never scheduled: the answer
+is an empty matches array. The rule applies to the live registry and to an explicit "hosts"
+array alike. required_min_vram_mb remains a filter on the card's total size, so a job that
+needs 20GB free on a card of at least 40GB says
+{"required_min_vram_mb": 40960, "required_min_free_memory_mb": 20480}.
 
 Ranking rule:
 
@@ -60,13 +103,16 @@ reports seconds cannot win a match on that alone. Timestamp units are deliberate
 normalised. Liveness is judged by the scheduler's own clock (see Host liveness), not by
 this field.
 
-Assumed host-report schema (used by scheduler matcher tests):
-- id: string
-- model: string (GPU model name)
-- vram_mb: number (total VRAM in megabytes)
-- gpu_util_pct: number (0-100)
-- free_memory_mb: number
-- timestamp: unix epoch seconds or ms (number)
+Host-report schema (scheduler/lib/schema.js; POST /hosts answers 400 invalid_host otherwise):
+- id: string, 1-256 characters (required)
+- model: string, 1-128 characters - the GPU model name (required)
+- vram_mb: number, 0-1048576 - total VRAM in megabytes (required)
+- timestamp: number, 0-1e13 - unix epoch seconds or ms (required)
+- gpu_util_pct: number, 0-100 (optional)
+- free_memory_mb: number, 0-1048576 and not more than vram_mb - free GPU memory (optional)
+
+A POST /hosts batch holds at most 1000 reports. Fields the schema does not name are dropped
+before a report is stored, so GET /hosts returns only these fields.
 
 This schema is an assumption for the minimal scheduler. If the host-agent implemented in the repository differs, the matcher will be adapted in a follow-up change.
 
@@ -105,6 +151,10 @@ The job file holds the matcher-shaped job spec itself:
 
 { "required_min_vram_mb": 8192, "acceptable_gpu_models": ["A100", "RTX4090"], "max_util_pct": 60 }
 
+Export the user token first; gridctl reads it from GRID_USER_TOKEN (not a flag, so it stays
+out of shell history) and sends it as a Bearer token. Without it the scheduler answers 401
+and gridctl exits 2 saying so.
+
 gridctl wraps it for the endpoint and posts {"job": { ... }} to POST /match, so the
 scheduler's payload.job is the spec you wrote. Without that wrapper payload.job is
 undefined, the filter is empty and every live host "matches" - that was the old bug.
@@ -122,3 +172,25 @@ An empty matches array prints "No hosts matched." and still exits 0. If a future
 job-execution API answers with a job id instead ({"id": ...}), gridctl keeps its old
 behaviour: it prints "Job submitted: <id>" and polls GET /jobs/<id>/logs. Run the CLI
 tests with pytest -q.
+
+Demo with docker compose:
+
+docker-compose.yml starts the scheduler and one fake host agent (scripts/fake_host_agent.js,
+which reports a made-up A100 every 30 seconds with its host token and deregisters when it
+stops), so gridctl can be tried end to end without a GPU. Only Docker is needed; the
+scheduler is published on 127.0.0.1:3000.
+
+    export FAKE_HOST_TOKEN=$(openssl rand -hex 32)
+    export GRID_USER_TOKEN=$(openssl rand -hex 32)
+    docker compose up -d --wait
+    python scripts/gridctl.py --scheduler-url http://localhost:3000 \
+        --job-file tests/fixtures/match_job.json
+    docker compose down
+
+gridctl prints the fake host as the one match:
+
+    1 host(s) matched, best first:
+      1. fake-host-1  model=A100  gpu_util_pct=5  free_memory_mb=30000
+
+Run every docker compose command from a shell where both tokens are exported; compose
+refuses to start without them rather than run the scheduler with no tokens.
